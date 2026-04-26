@@ -10,15 +10,15 @@ def arr(x):
 
 
 # -----------------------------
-# RSI (simple + stable)
+# RSI
 # -----------------------------
 def rsi(close):
-    close = arr(close)
+    c = arr(close)
 
-    if len(close) < 15:
+    if len(c) < 15:
         return 50
 
-    delta = np.diff(close)
+    delta = np.diff(c)
     gain = np.where(delta > 0, delta, 0)
     loss = np.where(delta < 0, -delta, 0)
 
@@ -33,15 +33,15 @@ def rsi(close):
 
 
 # -----------------------------
-# VOLUME SPIKE
+# VOLUME INTENSITY
 # -----------------------------
-def volume_spike(volume):
+def volume_intensity(volume):
     v = arr(volume)
-    if len(v) < 20:
-        return 1, False
 
-    spike = v[-1] / np.mean(v[-20:])
-    return spike, spike > 2.0
+    if len(v) < 20:
+        return 1
+
+    return v[-1] / np.mean(v[-20:])
 
 
 # -----------------------------
@@ -49,6 +49,7 @@ def volume_spike(volume):
 # -----------------------------
 def breakout(close):
     c = arr(close)
+
     if len(c) < 20:
         return False
 
@@ -56,53 +57,32 @@ def breakout(close):
 
 
 # -----------------------------
-# OPTIONS GAMMA PROXY
-# -----------------------------
-def gamma_proxy(stock):
-    try:
-        opt = stock.options
-        if not opt:
-            return 0
-
-        nearest = opt[0]
-        chain = stock.option_chain(nearest)
-
-        calls_oi = chain.calls["openInterest"].sum()
-        puts_oi = chain.puts["openInterest"].sum()
-
-        total = calls_oi + puts_oi
-
-        if total == 0:
-            return 0
-
-        # call dominance = bullish gamma pressure proxy
-        return calls_oi / total
-
-    except:
-        return 0
-
-
-# -----------------------------
-# SHORT PRESSURE MODEL
+# SHORT + BORROW PRESSURE
 # -----------------------------
 def short_pressure(info):
 
     short_pct = info.get("shortPercentOfFloat", 0.05) or 0.05
     short_ratio = info.get("shortRatio", 2) or 2
 
-    pressure = 0
-    pressure += short_pct * 5
-    pressure += min(short_ratio / 10, 1)
-
-    return min(pressure, 3)
+    return min((short_pct * 5) + (short_ratio / 10), 3)
 
 
 # -----------------------------
-# MAIN ENGINE (V11)
+# MARKET REGIME DETECTOR
 # -----------------------------
-def check_signal(ticker):
+def market_regime(vix_like_volatility):
+    if vix_like_volatility > 2.5:
+        return "HIGH_VOL"
+    elif vix_like_volatility > 1.5:
+        return "NORMAL"
+    return "LOW_VOL"
 
-    stock = yf.Ticker(ticker)
+
+# -----------------------------
+# CORE SCORING ENGINE
+# -----------------------------
+def score_stock(stock):
+
     df = stock.history(period="6mo")
 
     if df is None or df.empty:
@@ -110,48 +90,57 @@ def check_signal(ticker):
 
     close = df["Close"].values
     volume = df["Volume"].values
-
     info = stock.info
 
-    # -----------------------------
-    # CORE METRICS
-    # -----------------------------
     rsi_val = rsi(close)
-    vol_spike, is_spike = volume_spike(volume)
+    vol = volume_intensity(volume)
     is_breakout = breakout(close)
-
-    gamma = gamma_proxy(stock)
     short_p = short_pressure(info)
 
     # -----------------------------
-    # SQUEEZE SCORE (0–100)
+    # V12 SQUEEZE SCORE (0–100)
     # -----------------------------
     score = 0
 
-    # RSI contribution
+    # RSI component
     if rsi_val < 30:
         score += 15
     elif rsi_val < 40:
         score += 10
 
-    # volume
-    score += min(vol_spike * 10, 25)
+    # volume expansion
+    score += min(vol * 10, 30)
 
-    # breakout
+    # breakout strength
     if is_breakout:
         score += 15
-
-    # gamma squeeze pressure
-    score += gamma * 25
 
     # short pressure
     score += short_p * 20
 
-    score = round(min(score, 100), 2)
+    return {
+        "RSI": round(rsi_val, 2),
+        "volume_intensity": round(vol, 2),
+        "breakout": is_breakout,
+        "short_pressure": round(short_p, 2),
+        "score": round(min(score, 100), 2)
+    }
 
-    # -----------------------------
-    # SIGNAL CLASSIFICATION
-    # -----------------------------
+
+# -----------------------------
+# PUBLIC FUNCTION (V12)
+# -----------------------------
+def check_signal(ticker):
+
+    stock = yf.Ticker(ticker)
+
+    data = score_stock(stock)
+
+    if data is None:
+        return None
+
+    score = data["score"]
+
     if score >= 70:
         signal = "HIGH"
     elif score >= 45:
@@ -162,10 +151,5 @@ def check_signal(ticker):
     return {
         "ticker": ticker,
         "signal": signal,
-        "squeeze_score": score,
-        "RSI": round(rsi_val, 2),
-        "volume_spike": round(vol_spike, 2),
-        "gamma_pressure": round(gamma, 2),
-        "short_pressure": round(short_p, 2),
-        "breakout": is_breakout
+        **data
     }
