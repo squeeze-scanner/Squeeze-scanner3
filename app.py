@@ -33,9 +33,9 @@ if st.button("Run Radar"):
         st.subheader("🚨 Alerts")
 
         for r in results:
-            if r["alert"] == "HIGH":
-                st.error(f"🔥 HIGH SQUEEZE ALERT: {r['ticker']} ({r['squeeze_score']})")
-            elif r["alert"] == "MED":
-                st.warning(f"⚠️ Watch: {r['ticker']} ({r['squeeze_score']})")
-    else:
-        st.warning("No data returned")
+    alert = r.get("alert", "LOW")  # 🔥 prevents KeyError
+
+    if alert == "HIGH":
+        st.error(f"🔥 HIGH SQUEEZE ALERT: {r['ticker']} ({r['squeeze_score']})")
+    elif alert == "MED":
+        st.warning(f"⚠️ Watch: {r['ticker']} ({r['squeeze_score']})")
