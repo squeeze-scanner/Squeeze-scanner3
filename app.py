@@ -36,6 +36,9 @@ if start:
 
     results = []
 
+    # -----------------------------
+    # SCAN
+    # -----------------------------
     for t in tickers:
         try:
             res = check_signal(t)
@@ -44,6 +47,9 @@ if start:
         except Exception as e:
             st.write(f"Error on {t}: {e}")
 
+    # -----------------------------
+    # SORT RESULTS
+    # -----------------------------
     results = sorted(results, key=lambda x: x.get("score", 0), reverse=True)
 
     with placeholder.container():
@@ -59,24 +65,26 @@ if start:
 
             for r in results:
 
-                ticker = r["ticker"]
+                ticker = r.get("ticker", "N/A")
                 signal = r.get("signal", "LOW")
                 score = r.get("score", 0)
 
-                msg = f"{signal} SQUEEZE\n{ticker}\nPrice: {r.get('price')}\nScore: {score}"
+                msg = (
+                    f"{signal} SQUEEZE\n"
+                    f"{ticker}\n"
+                    f"Price: {r.get('price')}\n"
+                    f"Score: {score}"
+                )
 
                 last_time = st.session_state.last_alert_time.get(ticker, 0)
                 last_state = st.session_state.last_signal_state.get(ticker)
 
                 # -----------------------------
-                # ONLY ALERT ON STATE CHANGE
+                # ALERT ONLY ON STATE CHANGE
                 # -----------------------------
                 if signal == "HIGH":
 
-                    if (
-                        last_state != "HIGH"
-                        and now - last_time > cooldown
-                    ):
+                    if last_state != "HIGH" and (now - last_time > cooldown):
                         st.error("🔥 " + msg)
                         send_alert("🔥 " + msg)
 
@@ -89,12 +97,13 @@ if start:
 
                 else:
                     st.info(msg)
+                    st.session_state.last_signal_state[ticker] = "LOW"
 
             st.subheader("🏆 Top 5 Signals")
 
             for r in results[:5]:
                 st.write(
-                    f"{r['ticker']} → {r['signal']} | "
+                    f"{r.get('ticker')} → {r.get('signal')} | "
                     f"Price ${r.get('price')} | "
                     f"Score {r.get('score')} | "
                     f"RSI {r.get('RSI')} | "
@@ -104,5 +113,8 @@ if start:
         else:
             st.warning("No signals detected")
 
+    # -----------------------------
+    # SAFE REFRESH LOOP
+    # -----------------------------
     time.sleep(refresh_rate)
     st.rerun()
