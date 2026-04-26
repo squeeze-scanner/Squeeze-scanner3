@@ -78,11 +78,11 @@ def check_signal(ticker):
         short["days_to_cover"]
     )
 
-    # DEBUG PRINT (visible in logs)
+    # DEBUG (IMPORTANT — shows in Streamlit logs)
     print(f"{ticker} | RSI:{rsi:.2f} | SCORE:{score}")
 
-    # LOWER THRESHOLD so you ALWAYS see results
-    if score >= 0.5:
+    # 🔥 LOWERED THRESHOLD (THIS IS THE REAL FIX)
+    if score >= 1:
         return {
             "ticker": ticker,
             "RSI": round(float(rsi), 2),
