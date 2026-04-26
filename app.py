@@ -1,7 +1,7 @@
-from telegram import send_alert
 import streamlit as st
 import time
 from scanner import check_signal
+from telegram import send_alert
 
 st.title("🚀 Squeeze Radar v7")
 
@@ -39,17 +39,30 @@ if st.button("Run Radar"):
     if results:
         st.dataframe(results)
 
+        # -----------------------------
+        # ALERTS + TELEGRAM
+        # -----------------------------
         st.subheader("🚨 Alerts")
 
         for r in results:
-    score = r.get("squeeze_score", 0)
-    ticker = r.get("ticker", "N/A")
+            score = r.get("squeeze_score", 0)
+            ticker = r.get("ticker", "N/A")
 
-    if score >= 6:
-        st.error(f"🔥 HIGH SQUEEZE ALERT: {ticker} ({score})")
-    elif score >= 4:
-        st.warning(f"⚠️ Watch: {ticker} ({score})")
-      
+            if score >= 6:
+                msg = f"🔥 HIGH SQUEEZE ALERT\n{ticker}\nScore: {score}"
+
+                st.error(msg)
+                send_alert(msg)   # Telegram alert
+
+            elif score >= 4:
+                msg = f"⚠️ Watchlist Alert\n{ticker}\nScore: {score}"
+
+                st.warning(msg)
+                send_alert(msg)   # optional (remove if too spammy)
+
+        # -----------------------------
+        # TOP WATCHLIST
+        # -----------------------------
         st.subheader("🏆 Top Watchlist")
 
         for r in results[:5]:
