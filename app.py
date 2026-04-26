@@ -1,10 +1,10 @@
 import streamlit as st
 from scanner import check_signal
 
-st.title("🚀 Squeeze Radar v5")
+st.title("🚀 Squeeze Radar v5/v6")
 
 tickers_input = st.text_input(
-    "Enter tickers",
+    "Enter tickers (comma separated)",
     "GME,AMC,TSLA,NVDA,BB,PLTR"
 )
 
@@ -14,28 +14,42 @@ if st.button("Run Radar"):
 
     results = []
 
+    # -----------------------------
+    # BUILD RESULTS LIST
+    # -----------------------------
     for t in tickers:
         try:
             res = check_signal(t)
-            if res:
+            if res is not None:
                 results.append(res)
-        except:
-            pass
+        except Exception as e:
+            st.write(f"Error on {t}: {e}")
 
-    # sort by squeeze pressure
-    results = sorted(results, key=lambda x: x["squeeze_score"], reverse=True)
+    # -----------------------------
+    # SORT RESULTS BY SCORE
+    # -----------------------------
+    results = sorted(results, key=lambda x: x.get("squeeze_score", 0), reverse=True)
 
-    st.subheader("📊 Squeeze Pressure Rankings")
+    st.subheader("📊 Squeeze Rankings")
 
     if results:
+
         st.dataframe(results)
 
         st.subheader("🚨 Alerts")
 
+        # -----------------------------
+        # SAFE ALERT LOOP (NO ERRORS)
+        # -----------------------------
         for r in results:
-    alert = r.get("alert", "LOW")  # 🔥 prevents KeyError
 
-    if alert == "HIGH":
-        st.error(f"🔥 HIGH SQUEEZE ALERT: {r['ticker']} ({r['squeeze_score']})")
-    elif alert == "MED":
-        st.warning(f"⚠️ Watch: {r['ticker']} ({r['squeeze_score']})")
+            alert = r.get("alert", "LOW")
+
+            if alert == "HIGH":
+                st.error(f"🔥 HIGH SQUEEZE ALERT: {r.get('ticker')} ({r.get('squeeze_score')})")
+
+            elif alert == "MED":
+                st.warning(f"⚠️ Watch: {r.get('ticker')} ({r.get('squeeze_score')})")
+
+    else:
+        st.warning("No results returned. Try different tickers.")
