@@ -6,7 +6,9 @@ def get_price_data(ticker):
     if df is None or df.empty:
         return None
 
-    # force clean column structure
     df = df.reset_index()
+
+    # flatten column names (prevents hidden errors)
+    df.columns = [str(c) for c in df.columns]
 
     return df
