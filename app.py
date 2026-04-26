@@ -1,11 +1,14 @@
 import streamlit as st
 from scanner import check_signal
 
-st.title("🚀 Squeeze Radar v2")
+st.title("🚀 Squeeze Radar v3")
 
-tickers_input = st.text_input("Enter tickers", "GME,AMC,TSLA,NVDA,BB")
+tickers_input = st.text_input(
+    "Enter tickers (comma separated)",
+    "GME,AMC,TSLA,NVDA,BB,PLTR"
+)
 
-if st.button("Scan Radar"):
+if st.button("Run Radar"):
 
     tickers = [t.strip().upper() for t in tickers_input.split(",")]
 
@@ -19,7 +22,7 @@ if st.button("Scan Radar"):
         except:
             pass
 
-    # 🔥 SORT BY SQUEEZE SCORE (KEY FEATURE)
+    # 🔥 SORT BY SCORE (REAL SCANNER BEHAVIOUR)
     results = sorted(results, key=lambda x: x["squeeze_score"], reverse=True)
 
     st.subheader("📊 Squeeze Candidates")
