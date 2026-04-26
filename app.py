@@ -5,10 +5,10 @@ st.title("🚀 Short Squeeze Scanner")
 
 st.write("Enter tickers separated by commas")
 
-tickers = st.text_input("Tickers", "GME,AMC,TSLA")
+tickers_input = st.text_input("Tickers", "GME,AMC,TSLA")
 
 if st.button("Scan"):
-    tickers = [t.strip().upper() for t in tickers.split(",")]
+    tickers = [t.strip().upper() for t in tickers_input.split(",")]
 
     results = []
 
@@ -17,11 +17,11 @@ if st.button("Scan"):
             res = check_signal(t)
             if res:
                 results.append(res)
-        except:
-            pass
+        except Exception as e:
+            print(f"Error on {t}: {e}")
 
     if results:
-        st.success("Potential Squeeze Candidates Found")
+        st.success("Signals Found")
         st.dataframe(results)
     else:
-        st.warning("No signals found")
+        st.warning("No signals found (try more volatile tickers)")
