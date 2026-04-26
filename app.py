@@ -89,4 +89,20 @@ if start:
 
                 else:
                     st.info(msg)
-                    st
+
+            st.subheader("🏆 Top 5 Signals")
+
+            for r in results[:5]:
+                st.write(
+                    f"{r['ticker']} → {r['signal']} | "
+                    f"Price ${r.get('price')} | "
+                    f"Score {r.get('score')} | "
+                    f"RSI {r.get('RSI')} | "
+                    f"Vol {r.get('volume_intensity')}"
+                )
+
+        else:
+            st.warning("No signals detected")
+
+    time.sleep(refresh_rate)
+    st.rerun()
