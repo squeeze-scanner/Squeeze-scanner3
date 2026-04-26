@@ -3,13 +3,10 @@ from data import get_price_data, get_short_data
 
 
 # -----------------------------
-# SAFE RSI CALCULATION
+# SIMPLE RSI (NO LIBRARIES)
 # -----------------------------
-def add_rsi(df):
-    if df is None or 'Close' not in df:
-        return None
-
-    close = np.array(df['Close']).flatten()
+def calculate_rsi(close):
+    close = np.array(close).flatten()
 
     if len(close) < 15:
         return None
@@ -22,33 +19,33 @@ def add_rsi(df):
     avg_loss = np.mean(loss[:14])
 
     if avg_loss == 0:
-        rsi = 100
-    else:
-        rs = avg_gain / avg_loss
-        rsi = 100 - (100 / (1 + rs))
+        return 100
 
-    df = df.copy()
-    df['RSI'] = [None] * (len(df) - 1) + [rsi]
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
 
-    return df
+    return rsi
 
 
 # -----------------------------
-# SCORING FUNCTION
+# SCORING ENGINE (0–3 SCALE)
 # -----------------------------
 def calculate_score(rsi, short_interest, days_to_cover):
     score = 0
 
+    # RSI contribution
     if rsi < 30:
         score += 1
     elif rsi < 45:
         score += 0.5
 
+    # Short interest contribution
     if short_interest > 0.30:
         score += 1
     elif short_interest > 0.20:
         score += 0.5
 
+    # Days to cover contribution
     if days_to_cover > 7:
         score += 1
     elif days_to_cover > 5:
@@ -63,21 +60,17 @@ def calculate_score(rsi, short_interest, days_to_cover):
 def check_signal(ticker):
     df = get_price_data(ticker)
 
-    if df is None:
+    if df is None or 'Close' not in df:
         return None
 
-    df = add_rsi(df)
+    close = df['Close'].dropna()
 
-    if df is None or 'RSI' not in df:
-        return None
-
-    latest = df.iloc[-1]
-    short = get_short_data(ticker)
-
-    rsi = latest['RSI']
+    rsi = calculate_rsi(close)
 
     if rsi is None:
         return None
+
+    short = get_short_data(ticker)
 
     score = calculate_score(
         rsi,
@@ -85,8 +78,11 @@ def check_signal(ticker):
         short["days_to_cover"]
     )
 
-    # 🔥 FIXED THRESHOLD (Step 1 change)
-    if score >= 1:
+    # DEBUG PRINT (visible in logs)
+    print(f"{ticker} | RSI:{rsi:.2f} | SCORE:{score}")
+
+    # LOWER THRESHOLD so you ALWAYS see results
+    if score >= 0.5:
         return {
             "ticker": ticker,
             "RSI": round(float(rsi), 2),
