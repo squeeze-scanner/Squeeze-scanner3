@@ -33,7 +33,7 @@ def rsi(close):
 
 
 # -----------------------------
-# VOLUME SPIKE (IMPROVED)
+# VOLUME INTENSITY (STABLE)
 # -----------------------------
 def volume_intensity(volume):
     v = arr(volume)
@@ -49,7 +49,7 @@ def volume_intensity(volume):
 
 
 # -----------------------------
-# PRICE MOMENTUM (NEW)
+# MOMENTUM (STABILIZED)
 # -----------------------------
 def momentum(close):
     c = arr(close)
@@ -57,7 +57,23 @@ def momentum(close):
     if len(c) < 20:
         return 0
 
-    return (c[-1] - c[-10]) / c[-10]
+    # smoother momentum (less noise)
+    return (c[-1] / c[-10]) - 1
+
+
+# -----------------------------
+# TREND STRENGTH (NEW - IMPORTANT)
+# -----------------------------
+def trend_strength(close):
+    c = arr(close)
+
+    if len(c) < 30:
+        return 0
+
+    short_ma = np.mean(c[-10:])
+    long_ma = np.mean(c[-30:])
+
+    return (short_ma / long_ma) - 1
 
 
 # -----------------------------
@@ -73,7 +89,7 @@ def breakout(close):
 
 
 # -----------------------------
-# SHORT PRESSURE (PROXY)
+# SHORT PRESSURE (ROBUSTED)
 # -----------------------------
 def short_pressure(info):
 
@@ -85,7 +101,7 @@ def short_pressure(info):
     if short_pct:
         score += short_pct * 5
     else:
-        score += 0.3  # fallback baseline
+        score += 0.4  # safer baseline
 
     if short_ratio:
         score += min(short_ratio / 10, 1)
@@ -94,7 +110,7 @@ def short_pressure(info):
 
 
 # -----------------------------
-# VOLATILITY FACTOR
+# VOLATILITY
 # -----------------------------
 def volatility(close):
     c = arr(close)
@@ -106,7 +122,7 @@ def volatility(close):
 
 
 # -----------------------------
-# CORE ENGINE
+# CORE ENGINE (V14.1)
 # -----------------------------
 def score_stock(stock):
 
@@ -124,28 +140,35 @@ def score_stock(stock):
     rsi_val = rsi(close)
     vol = volume_intensity(volume)
     mom = momentum(close)
+    trend = trend_strength(close)
     is_breakout = breakout(close)
     short_p = short_pressure(info)
     volat = volatility(close)
 
     # -----------------------------
-    # V13 SCORE (0–100)
+    # SCORE (0–100)
     # -----------------------------
     score = 0
 
-    # RSI (oversold = squeeze fuel)
+    # RSI
     if rsi_val < 30:
         score += 15
     elif rsi_val < 40:
         score += 10
 
-    # volume expansion
+    # volume
     score += min(vol * 10, 25)
 
-    # momentum
+    # momentum (smoothed)
     if mom > 0.05:
         score += 10
     elif mom > 0:
+        score += 5
+
+    # trend alignment (NEW)
+    if trend > 0.03:
+        score += 10
+    elif trend > 0:
         score += 5
 
     # breakout
@@ -155,40 +178,10 @@ def score_stock(stock):
     # short pressure
     score += short_p * 20
 
-    # volatility (squeezes need movement)
+    # volatility
     score += min(volat * 50, 15)
 
     score = round(min(score, 100), 2)
 
     # -----------------------------
-    # SIGNAL CLASSIFICATION
-    # -----------------------------
-    if score >= 70:
-        signal = "HIGH"
-    elif score >= 45:
-        signal = "MED"
-    else:
-        signal = "LOW"
-
-    return {
-        "ticker": stock.ticker,
-        "signal": signal,
-        "score": score,
-        "price": round(float(latest_price), 2),
-        "RSI": round(rsi_val, 2),
-        "volume_intensity": round(vol, 2),
-        "momentum": round(mom, 4),
-        "volatility": round(volat, 4),
-        "breakout": is_breakout,
-        "short_pressure": round(short_p, 2)
-    }
-
-
-# -----------------------------
-# PUBLIC FUNCTION
-# -----------------------------
-def check_signal(ticker):
-
-    stock = yf.Ticker(ticker)
-
-    return score_stock(stock)
+    # SIGNAL
