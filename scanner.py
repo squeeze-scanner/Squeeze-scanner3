@@ -3,14 +3,13 @@ from data import get_price_data, get_short_data
 
 
 # -----------------------------
-# SIMPLE RSI (NO LIBRARIES)
+# SAFE RSI (FORCES 1D CLEAN DATA)
 # -----------------------------
-
 def calculate_rsi(close):
-    import numpy as np
+    close = np.array(close)
 
-    # 🔥 FORCE FLAT 1D ARRAY (THIS FIXES YOUR ERROR)
-    close = np.array(close).reshape(-1)
+    # 🔥 FORCE FLAT ARRAY (KEY FIX)
+    close = close.squeeze().reshape(-1)
 
     if len(close) < 15:
         return None
@@ -28,17 +27,20 @@ def calculate_rsi(close):
     rs = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
 
-    return rsi
+    return float(rsi)
+
 
 # -----------------------------
-# SCORING ENGINE (0–3 SCALE)
+# SCORING ENGINE
 # -----------------------------
-def calculate_score(rsi, short_interest, days_to_cover, volume_ratio):
+def calculate_score(rsi, short_interest, days_to_cover):
     score = 0
 
     if rsi < 50:
         score += 1
     if rsi < 40:
+        score += 1
+    if rsi < 30:
         score += 1
 
     if short_interest > 0.25:
@@ -47,11 +49,8 @@ def calculate_score(rsi, short_interest, days_to_cover, volume_ratio):
     if days_to_cover > 5:
         score += 1
 
-    # 🔥 THIS IS WHAT YOU'RE MISSING
-    if volume_ratio > 1.5:
-        score += 1
-
     return score
+
 
 # -----------------------------
 # MAIN FUNCTION
@@ -62,7 +61,9 @@ def check_signal(ticker):
     if df is None or 'Close' not in df:
         return None
 
-    close = np.array(df['Close']).reshape(-1)
+    # 🔥 HARD FORCE 1D ARRAY HERE (CRITICAL FIX)
+    close = np.array(df['Close']).squeeze().reshape(-1)
+
     rsi = calculate_rsi(close)
 
     if rsi is None:
@@ -76,11 +77,15 @@ def check_signal(ticker):
         short["days_to_cover"]
     )
 
-    # 🔥 ALWAYS RETURN DATA (NO FILTERING)
-    return {
-        "ticker": ticker,
-        "RSI": round(float(rsi), 2),
-        "short_interest": short["short_interest"],
-        "days_to_cover": short["days_to_cover"],
-        "squeeze_score": round(score, 2)
-    }
+    print(f"{ticker} | RSI:{rsi:.2f} | SCORE:{score}")
+
+    if score >= 1:
+        return {
+            "ticker": ticker,
+            "RSI": round(rsi, 2),
+            "short_interest": short["short_interest"],
+            "days_to_cover": short["days_to_cover"],
+            "squeeze_score": round(score, 2)
+        }
+
+    return None
