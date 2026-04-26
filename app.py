@@ -42,14 +42,14 @@ if st.button("Run Radar"):
         st.subheader("🚨 Alerts")
 
         for r in results:
-            score = r.get("squeeze_score", 0)
-            ticker = r.get("ticker", "N/A")
+    score = r.get("squeeze_score", 0)
+    ticker = r.get("ticker", "N/A")
 
-            if score >= 6:
-                st.error(f"🔥 HIGH SQUEEZE ALERT: {ticker} ({score})")
-            elif score >= 4:
-                st.warning(f"⚠️ Watch: {ticker} ({score})")
-
+    if score >= 6:
+        st.error(f"🔥 HIGH SQUEEZE ALERT: {ticker} ({score})")
+    elif score >= 4:
+        st.warning(f"⚠️ Watch: {ticker} ({score})")
+      
         st.subheader("🏆 Top Watchlist")
 
         for r in results[:5]:
