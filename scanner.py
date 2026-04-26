@@ -62,7 +62,7 @@ def check_signal(ticker):
     if df is None or 'Close' not in df:
         return None
 
-    close = df['Close'].dropna()
+    close = np.array(df['Close']).reshape(-1)
     rsi = calculate_rsi(close)
 
     if rsi is None:
