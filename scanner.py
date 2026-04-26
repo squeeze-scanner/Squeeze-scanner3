@@ -5,8 +5,12 @@ from data import get_price_data, get_short_data
 # -----------------------------
 # SIMPLE RSI (NO LIBRARIES)
 # -----------------------------
+
 def calculate_rsi(close):
-    close = np.array(close).flatten()
+    import numpy as np
+
+    # 🔥 FORCE FLAT 1D ARRAY (THIS FIXES YOUR ERROR)
+    close = np.array(close).reshape(-1)
 
     if len(close) < 15:
         return None
@@ -25,7 +29,6 @@ def calculate_rsi(close):
     rsi = 100 - (100 / (1 + rs))
 
     return rsi
-
 
 # -----------------------------
 # SCORING ENGINE (0–3 SCALE)
