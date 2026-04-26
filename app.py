@@ -1,7 +1,7 @@
 import streamlit as st
 from scanner import check_signal
 
-st.title("🚀 Squeeze Radar v4")
+st.title("🚀 Squeeze Radar v5")
 
 tickers_input = st.text_input(
     "Enter tickers",
@@ -22,12 +22,20 @@ if st.button("Run Radar"):
         except:
             pass
 
-    # 🔥 SORT BY SCORE
+    # sort by squeeze pressure
     results = sorted(results, key=lambda x: x["squeeze_score"], reverse=True)
 
-    st.subheader("📊 Ranked Squeeze Candidates")
+    st.subheader("📊 Squeeze Pressure Rankings")
 
     if results:
         st.dataframe(results)
+
+        st.subheader("🚨 Alerts")
+
+        for r in results:
+            if r["alert"] == "HIGH":
+                st.error(f"🔥 HIGH SQUEEZE ALERT: {r['ticker']} ({r['squeeze_score']})")
+            elif r["alert"] == "MED":
+                st.warning(f"⚠️ Watch: {r['ticker']} ({r['squeeze_score']})")
     else:
         st.warning("No data returned")
