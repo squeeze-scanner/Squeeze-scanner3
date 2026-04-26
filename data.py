@@ -7,8 +7,14 @@ def get_price_data(ticker):
         return None
 
     df = df.reset_index()
-
-    # flatten column names (prevents hidden errors)
     df.columns = [str(c) for c in df.columns]
 
     return df
+
+
+def get_short_data(ticker):
+    # MOCK DATA (replace later with real API)
+    return {
+        "short_interest": 0.25,
+        "days_to_cover": 6
+    }
