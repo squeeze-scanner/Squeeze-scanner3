@@ -1,29 +1,29 @@
 import numpy as np
-from data import get_price_data, get_short_data
+import yfinance as yf
 
 
 # -----------------------------
-# SAFE SERIES CONVERSION
+# SAFE ARRAY
 # -----------------------------
-def to_array(x):
+def arr(x):
     return np.array(x).reshape(-1)
 
 
 # -----------------------------
-# RSI
+# RSI (simple + stable)
 # -----------------------------
 def rsi(close):
-    close = to_array(close)
+    close = arr(close)
 
-    if len(close) < 10:
+    if len(close) < 15:
         return 50
 
     delta = np.diff(close)
     gain = np.where(delta > 0, delta, 0)
     loss = np.where(delta < 0, -delta, 0)
 
-    avg_gain = np.mean(gain[-14:]) if len(gain) >= 14 else np.mean(gain)
-    avg_loss = np.mean(loss[-14:]) if len(loss) >= 14 else np.mean(loss)
+    avg_gain = np.mean(gain[-14:])
+    avg_loss = np.mean(loss[-14:])
 
     if avg_loss == 0:
         return 100
@@ -33,95 +33,139 @@ def rsi(close):
 
 
 # -----------------------------
-# EVENT DETECTORS (CORE v8 CHANGE)
+# VOLUME SPIKE
 # -----------------------------
-def detect_volume_spike(volume):
-    v = to_array(volume)
+def volume_spike(volume):
+    v = arr(volume)
     if len(v) < 20:
-        return False, 1
+        return 1, False
 
     spike = v[-1] / np.mean(v[-20:])
-    return spike > 2.0, spike
+    return spike, spike > 2.0
 
 
-def detect_breakout(close):
-    c = to_array(close)
+# -----------------------------
+# BREAKOUT DETECTION
+# -----------------------------
+def breakout(close):
+    c = arr(close)
     if len(c) < 20:
         return False
 
     return c[-1] > np.max(c[-20:-1])
 
 
-def detect_drop_then_rise(close):
-    c = to_array(close)
-    if len(c) < 15:
-        return False
+# -----------------------------
+# OPTIONS GAMMA PROXY
+# -----------------------------
+def gamma_proxy(stock):
+    try:
+        opt = stock.options
+        if not opt:
+            return 0
 
-    return (c[-5] < c[-10]) and (c[-1] > c[-5])
+        nearest = opt[0]
+        chain = stock.option_chain(nearest)
+
+        calls_oi = chain.calls["openInterest"].sum()
+        puts_oi = chain.puts["openInterest"].sum()
+
+        total = calls_oi + puts_oi
+
+        if total == 0:
+            return 0
+
+        # call dominance = bullish gamma pressure proxy
+        return calls_oi / total
+
+    except:
+        return 0
 
 
 # -----------------------------
-# MAIN SIGNAL ENGINE (EVENT BASED)
+# SHORT PRESSURE MODEL
+# -----------------------------
+def short_pressure(info):
+
+    short_pct = info.get("shortPercentOfFloat", 0.05) or 0.05
+    short_ratio = info.get("shortRatio", 2) or 2
+
+    pressure = 0
+    pressure += short_pct * 5
+    pressure += min(short_ratio / 10, 1)
+
+    return min(pressure, 3)
+
+
+# -----------------------------
+# MAIN ENGINE (V11)
 # -----------------------------
 def check_signal(ticker):
 
-    df = get_price_data(ticker)
+    stock = yf.Ticker(ticker)
+    df = stock.history(period="6mo")
 
-    if df is None:
+    if df is None or df.empty:
         return None
 
     close = df["Close"].values
     volume = df["Volume"].values
 
-    short = get_short_data(ticker)
+    info = stock.info
 
+    # -----------------------------
+    # CORE METRICS
+    # -----------------------------
     rsi_val = rsi(close)
+    vol_spike, is_spike = volume_spike(volume)
+    is_breakout = breakout(close)
 
-    volume_event, vol_spike = detect_volume_spike(volume)
-    breakout_event = detect_breakout(close)
-    reversal_event = detect_drop_then_rise(close)
-
-    short_pressure = short["short_interest"] > 0.25
-    squeeze_fuel = short["days_to_cover"] > 5
+    gamma = gamma_proxy(stock)
+    short_p = short_pressure(info)
 
     # -----------------------------
-    # EVENT LOGIC (NO RAW SCORE)
+    # SQUEEZE SCORE (0–100)
     # -----------------------------
-    events = []
+    score = 0
 
-    if volume_event:
-        events.append("VOLUME_SPIKE")
+    # RSI contribution
+    if rsi_val < 30:
+        score += 15
+    elif rsi_val < 40:
+        score += 10
 
-    if breakout_event:
-        events.append("BREAKOUT")
+    # volume
+    score += min(vol_spike * 10, 25)
 
-    if reversal_event:
-        events.append("REVERSAL")
+    # breakout
+    if is_breakout:
+        score += 15
 
-    if short_pressure:
-        events.append("HIGH_SHORT_INTEREST")
+    # gamma squeeze pressure
+    score += gamma * 25
 
-    if squeeze_fuel:
-        events.append("HIGH_DAYS_TO_COVER")
+    # short pressure
+    score += short_p * 20
+
+    score = round(min(score, 100), 2)
 
     # -----------------------------
-    # SQUEEZE CLASSIFICATION
+    # SIGNAL CLASSIFICATION
     # -----------------------------
-    if len(events) >= 3:
+    if score >= 70:
         signal = "HIGH"
-    elif len(events) == 2:
+    elif score >= 45:
         signal = "MED"
-    elif len(events) == 1:
-        signal = "LOW"
     else:
-        signal = "NONE"
+        signal = "LOW"
 
     return {
         "ticker": ticker,
         "signal": signal,
-        "events": events,
+        "squeeze_score": score,
         "RSI": round(rsi_val, 2),
         "volume_spike": round(vol_spike, 2),
-        "short_interest": short["short_interest"],
-        "days_to_cover": short["days_to_cover"]
+        "gamma_pressure": round(gamma, 2),
+        "short_pressure": round(short_p, 2),
+        "breakout": is_breakout
     }
