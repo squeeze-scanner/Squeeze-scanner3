@@ -3,7 +3,7 @@ from data import get_price_data, get_short_data
 
 
 # -----------------------------
-# SAFE RSI (NO EXTERNAL LIBS)
+# SAFE RSI CALCULATION
 # -----------------------------
 def add_rsi(df):
     if df is None or 'Close' not in df:
@@ -34,7 +34,34 @@ def add_rsi(df):
 
 
 # -----------------------------
-# MAIN SIGNAL ENGINE
+# SCORING ENGINE (0–3 SCALE)
+# -----------------------------
+def calculate_score(rsi, short_interest, days_to_cover):
+    score = 0
+
+    # RSI condition (oversold = stronger squeeze potential)
+    if rsi < 30:
+        score += 1
+    elif rsi < 45:
+        score += 0.5
+
+    # Short interest pressure
+    if short_interest > 0.30:
+        score += 1
+    elif short_interest > 0.20:
+        score += 0.5
+
+    # Days to cover (short squeeze fuel)
+    if days_to_cover > 7:
+        score += 1
+    elif days_to_cover > 5:
+        score += 0.5
+
+    return score
+
+
+# -----------------------------
+# MAIN FUNCTION
 # -----------------------------
 def check_signal(ticker):
     df = get_price_data(ticker)
@@ -55,16 +82,10 @@ def check_signal(ticker):
     if rsi is None:
         return None
 
-    if (
-        rsi < 30 and
-        short["short_interest"] > 0.2 and
-        short["days_to_cover"] > 5
-    ):
-        return {
-            "ticker": ticker,
-            "RSI": round(float(rsi), 2),
-            "short_interest": short["short_interest"],
-            "days_to_cover": short["days_to_cover"]
-        }
+    score = calculate_score(
+        rsi,
+        short["short_interest"],
+        short["days_to_cover"]
+    )
 
-    return None
+    # ONLY
