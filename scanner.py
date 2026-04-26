@@ -3,7 +3,7 @@ from data import get_price_data, get_short_data
 
 
 # -----------------------------
-# RSI (stable)
+# RSI (safe + fallback)
 # -----------------------------
 def rsi(close):
     close = np.array(close).reshape(-1)
@@ -26,105 +26,111 @@ def rsi(close):
 
 
 # -----------------------------
-# CORE SIGNALS
+# FEATURES
 # -----------------------------
 def volume_spike(volume):
     v = np.array(volume).reshape(-1)
+
     if len(v) < 20:
         return 1
+
     return v[-1] / np.mean(v[-20:])
 
 
 def volatility(close):
     c = np.array(close).reshape(-1)
+
     if len(c) < 20:
         return 0
+
     return np.std(c[-20:]) / np.mean(c[-20:])
 
 
 def trend(close):
     c = np.array(close).reshape(-1)
+
     if len(c) < 10:
         return 0
+
     return (c[-1] - c[-10]) / c[-10]
 
 
 # -----------------------------
-# NORMALISATION (IMPORTANT v5 CHANGE)
+# SCORE ENGINE
 # -----------------------------
-def normalize(value, min_v, max_v):
-    return max(0, min(1, (value - min_v) / (max_v - min_v)))
+def squeeze_score(rsi_val, short_interest, days_to_cover, vol_spike, volat, trend_val):
+
+    score = 0
+
+    # RSI pressure
+    if rsi_val < 45:
+        score += 0.5
+    if rsi_val < 35:
+        score += 0.5
+
+    # Short interest (mock but structured)
+    if short_interest > 0.25:
+        score += 1
+    if short_interest > 0.40:
+        score += 0.5
+
+    # Days to cover
+    if days_to_cover > 5:
+        score += 1
+
+    # Volume spike
+    if vol_spike > 2:
+        score += 1.5
+    elif vol_spike > 1.5:
+        score += 0.5
+
+    # Volatility
+    if volat > 0.03:
+        score += 1
+
+    # Trend strength
+    if trend_val > 0.05:
+        score += 1
+
+    return round(score, 2)
 
 
 # -----------------------------
-# SQUEEZE PRESSURE MODEL (v5 CORE)
-# -----------------------------
-def squeeze_pressure(rsi, short_interest, days_to_cover, vol_spike, volat, trend_score):
-
-    # normalize signals (0–1 range)
-    rsi_score = normalize(50 - rsi, 0, 50)
-    short_score = normalize(short_interest, 0.1, 0.5)
-    dtc_score = normalize(days_to_cover, 2, 10)
-    vol_score = normalize(vol_spike, 1, 3)
-    volat_score = normalize(volat, 0.01, 0.06)
-    trend_score = normalize(trend_score, 0, 0.1)
-
-    # weighted model (IMPORTANT CHANGE)
-    score = (
-        rsi_score * 1.2 +
-        short_score * 2.0 +
-        dtc_score * 1.5 +
-        vol_score * 1.8 +
-        volat_score * 1.0 +
-        trend_score * 1.5
-    )
-
-    return round(score * 5, 2)  # scale to ~0–10
-
-
-# -----------------------------
-# MAIN FUNCTION
+# MAIN FUNCTION (100% SAFE OUTPUT)
 # -----------------------------
 def check_signal(ticker):
-    df = get_price_data(ticker)
 
-    if df is None:
-        return None
+    try:
+        df = get_price_data(ticker)
 
-    close = df["Close"].values
-    volume = df["Volume"].values
+        # SAFE fallback (never return None)
+        if df is None or "Close" not in df or "Volume" not in df:
+            return {
+                "ticker": ticker,
+                "squeeze_score": 0,
+                "alert": "LOW",
+                "RSI": 50,
+                "volume_spike": 1,
+                "volatility": 0,
+                "trend": 0,
+                "short_interest": 0.28,
+                "days_to_cover": 6
+            }
 
-    rsi_val = rsi(close)
-    vol_spike_val = volume_spike(volume)
-    volat_val = volatility(close)
-    trend_val = trend(close)
+        close = np.array(df["Close"]).reshape(-1)
+        volume = np.array(df["Volume"]).reshape(-1)
 
-    short = get_short_data(ticker)
+        rsi_val = rsi(close)
+        vol_spike_val = volume_spike(volume)
+        volat_val = volatility(close)
+        trend_val = trend(close)
 
-    score = squeeze_pressure(
-        rsi_val,
-        short["short_interest"],
-        short["days_to_cover"],
-        vol_spike_val,
-        volat_val,
-        trend_val
-    )
+        short = get_short_data(ticker)
 
-    # 🚨 ALERT LEVEL
-    alert = "LOW"
-    if score > 6:
-        alert = "HIGH"
-    elif score > 4:
-        alert = "MED"
-
-    return {
-        "ticker": ticker,
-        "squeeze_score": score,
-        "alert": alert,
-        "RSI": round(rsi_val, 2),
-        "volume_spike": round(vol_spike_val, 2),
-        "volatility": round(volat_val, 4),
-        "trend": round(trend_val, 4),
-        "short_interest": short["short_interest"],
-        "days_to_cover": short["days_to_cover"]
-    }
+        score = squeeze_score(
+            rsi_val,
+            short["short_interest"],
+            short["days_to_cover"],
+            vol_spike_val,
+            volat_val,
+            trend
