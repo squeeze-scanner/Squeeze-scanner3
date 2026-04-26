@@ -60,7 +60,6 @@ def check_signal(ticker):
         return None
 
     close = df['Close'].dropna()
-
     rsi = calculate_rsi(close)
 
     if rsi is None:
@@ -74,17 +73,11 @@ def check_signal(ticker):
         short["days_to_cover"]
     )
 
-    # DEBUG (IMPORTANT — shows in Streamlit logs)
-    print(f"{ticker} | RSI:{rsi:.2f} | SCORE:{score}")
-
-    # 🔥 LOWERED THRESHOLD (THIS IS THE REAL FIX)
-    if score >= 1:
-        return {
-            "ticker": ticker,
-            "RSI": round(float(rsi), 2),
-            "short_interest": short["short_interest"],
-            "days_to_cover": short["days_to_cover"],
-            "squeeze_score": round(score, 2)
-        }
-
-    return None
+    # 🔥 ALWAYS RETURN DATA (NO FILTERING)
+    return {
+        "ticker": ticker,
+        "RSI": round(float(rsi), 2),
+        "short_interest": short["short_interest"],
+        "days_to_cover": short["days_to_cover"],
+        "squeeze_score": round(score, 2)
+    }
