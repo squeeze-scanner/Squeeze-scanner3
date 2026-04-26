@@ -3,7 +3,7 @@ import time
 from scanner import check_signal
 from telegram import send_alert
 
-st.title("🚀 Squeeze Radar — V8 LIVE MODE (Event Engine)")
+st.title("🚀 Squeeze Radar — LIVE MODE (No Spam)")
 
 tickers_input = st.text_input(
     "Enter tickers (comma separated)",
@@ -16,11 +16,17 @@ start = st.checkbox("🟢 Start Live Radar")
 
 placeholder = st.empty()
 
+# -----------------------------
+# MEMORY (IMPORTANT: prevents spam)
+# -----------------------------
+if "last_alert_time" not in st.session_state:
+    st.session_state.last_alert_time = {}
+
+cooldown = 600  # 10 minutes per ticker
+
 if start:
 
     tickers = [t.strip().upper() for t in tickers_input.split(",")]
-
-    seen_alerts = set()  # 🔥 prevents duplicate Telegram spam
 
     while True:
 
@@ -38,55 +44,62 @@ if start:
                 st.write(f"Error on {t}: {e}")
 
         # -----------------------------
-        # SORT (HIGH first)
+        # SORT RESULTS
         # -----------------------------
-        order = {"HIGH": 3, "MED": 2, "LOW": 1, "NONE": 0}
-        results = sorted(results, key=lambda x: order.get(x.get("signal", "NONE")), reverse=True)
+        results = sorted(
+            results,
+            key=lambda x: x.get("squeeze_score", 0),
+            reverse=True
+        )
 
         with placeholder.container():
 
-            st.subheader("📊 Live Squeeze Events (V8)")
+            st.subheader("📊 Live Squeeze Rankings")
 
             if results:
                 st.dataframe(results)
 
-                st.subheader("🚨 Live Event Alerts")
+                st.subheader("🚨 Live Alerts")
+
+                now = time.time()
 
                 for r in results:
 
-                    ticker = r.get("ticker")
-                    signal = r.get("signal")
-                    events = r.get("events", [])
+                    score = r.get("squeeze_score", 0)
+                    ticker = r.get("ticker", "N/A")
 
-                    msg = f"{signal} SQUEEZE SIGNAL\n{ticker}\nEvents: {', '.join(events)}"
+                    last_time = st.session_state.last_alert_time.get(ticker, 0)
 
                     # -----------------------------
-                    # HIGH SIGNAL = TELEGRAM ALERT
+                    # HIGH ALERT (WITH COOLDOWN)
                     # -----------------------------
-                    if signal == "HIGH" and ticker not in seen_alerts:
+                    if score >= 6:
 
-                        st.error("🔥 " + msg)
-                        send_alert("🔥 " + msg)
+                        if now - last_time > cooldown:
 
-                        seen_alerts.add(ticker)
+                            msg = f"🔥 LIVE HIGH SQUEEZE\n{ticker}\nScore: {score}"
 
-                    elif signal == "MED":
-                        st.warning("⚠️ " + msg)
+                            st.error(msg)
+                            send_alert(msg)
 
-                    elif signal == "LOW":
-                        st.info(msg)
+                            st.session_state.last_alert_time[ticker] = now
 
-                st.subheader("🏆 Top 5 Signals")
+                    # -----------------------------
+                    # WATCH ALERT (NO TELEGRAM SPAM)
+                    # -----------------------------
+                    elif score >= 4:
+                        st.warning(f"⚠️ LIVE WATCH\n{ticker}\nScore: {score}")
+
+                st.subheader("🏆 Top 5 Live")
 
                 for r in results[:5]:
                     st.write(
-                        f"{r.get('ticker')} → {r.get('signal')} | "
-                        f"Events: {', '.join(r.get('events', []))} | "
+                        f"{r.get('ticker')} → Score {r.get('squeeze_score')} | "
                         f"RSI {r.get('RSI')} | Vol {r.get('volume_spike')}"
                     )
 
             else:
-                st.warning("No signals detected")
+                st.warning("No data available")
 
         time.sleep(refresh_rate)
         st.rerun()
