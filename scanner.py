@@ -34,24 +34,21 @@ def add_rsi(df):
 
 
 # -----------------------------
-# SCORING ENGINE (0–3 SCALE)
+# SCORING FUNCTION
 # -----------------------------
 def calculate_score(rsi, short_interest, days_to_cover):
     score = 0
 
-    # RSI condition (oversold = stronger squeeze potential)
     if rsi < 30:
         score += 1
     elif rsi < 45:
         score += 0.5
 
-    # Short interest pressure
     if short_interest > 0.30:
         score += 1
     elif short_interest > 0.20:
         score += 0.5
 
-    # Days to cover (short squeeze fuel)
     if days_to_cover > 7:
         score += 1
     elif days_to_cover > 5:
@@ -88,4 +85,14 @@ def check_signal(ticker):
         short["days_to_cover"]
     )
 
-    # ONLY
+    # 🔥 FIXED THRESHOLD (Step 1 change)
+    if score >= 1:
+        return {
+            "ticker": ticker,
+            "RSI": round(float(rsi), 2),
+            "short_interest": short["short_interest"],
+            "days_to_cover": short["days_to_cover"],
+            "squeeze_score": round(score, 2)
+        }
+
+    return None
