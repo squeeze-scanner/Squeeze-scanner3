@@ -11,9 +11,7 @@ tickers_input = st.text_input(
 
 auto_refresh = st.checkbox("🔄 Auto-refresh (5 seconds)")
 
-run = st.button("Run Radar")
-
-if run:
+if st.button("Run Radar"):
 
     tickers = [t.strip().upper() for t in tickers_input.split(",")]
 
@@ -31,7 +29,7 @@ if run:
             st.write(f"Error on {t}: {e}")
 
     # -----------------------------
-    # SORT BY SCORE
+    # SORT RESULTS
     # -----------------------------
     results = sorted(results, key=lambda x: x.get("squeeze_score", 0), reverse=True)
 
@@ -40,9 +38,6 @@ if run:
     if results:
         st.dataframe(results)
 
-        # -----------------------------
-        # ALERTS
-        # -----------------------------
         st.subheader("🚨 Alerts")
 
         for r in results:
@@ -54,10 +49,7 @@ if run:
             elif score >= 4:
                 st.warning(f"⚠️ Watch: {ticker} ({score})")
 
-        # -----------------------------
-        # TOP WATCHLIST
-        # -----------------------------
-        st.subheader("🏆 Top Squeeze Watchlist")
+        st.subheader("🏆 Top Watchlist")
 
         for r in results[:5]:
             st.write(
@@ -65,17 +57,12 @@ if run:
                 f"RSI {r.get('RSI')} | Vol {r.get('volume_spike')}"
             )
 
-        # -----------------------------
-        # SENTIMENT LABELS
-        # -----------------------------
-        st.subheader("📊 Market Sentiment")
+    else:
+        st.warning("No results returned. Try different tickers.")
 
-        def label(score):
-            if score >= 6:
-                return "🔥 STRONG SQUEEZE SETUP"
-            elif score >= 4:
-                return "⚠️ WATCH"
-            else:
-                return "LOW"
-
-        for r in
+# -----------------------------
+# AUTO REFRESH
+# -----------------------------
+if auto_refresh:
+    time.sleep(5)
+    st.rerun()
