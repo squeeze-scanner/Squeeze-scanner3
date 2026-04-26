@@ -2,23 +2,17 @@ import numpy as np
 import yfinance as yf
 
 
-# -----------------------------
-# HELPERS
-# -----------------------------
 def arr(x):
     return np.array(x).reshape(-1)
 
 
-def safe_float(x, default=0):
+def safe(x, default=0):
     try:
         return float(x)
     except:
         return default
 
 
-# -----------------------------
-# INDICATORS
-# -----------------------------
 def rsi(close):
     c = arr(close)
     if len(c) < 15:
@@ -64,8 +58,8 @@ def volatility(close):
     c = arr(close)
     if len(c) < 20:
         return 0
-    mean = np.mean(c[-20:])
-    return np.std(c[-20:]) / mean if mean != 0 else 0
+    m = np.mean(c[-20:])
+    return np.std(c[-20:]) / m if m != 0 else 0
 
 
 def breakout(close):
@@ -75,9 +69,6 @@ def breakout(close):
     return c[-1] > np.max(c[-20:-1])
 
 
-# -----------------------------
-# CORE SCORING
-# -----------------------------
 def score_stock(stock):
 
     df = stock.history(period="6mo")
@@ -122,31 +113,22 @@ def score_stock(stock):
 
     score = round(min(score, 100), 2)
 
-    if score >= 70:
-        signal = "HIGH"
-    elif score >= 45:
-        signal = "MED"
-    else:
-        signal = "LOW"
+    signal = "HIGH" if score >= 70 else "MED" if score >= 45 else "LOW"
 
-    # 🔥 FIXED SCHEMA (NO KEYERROR EVER)
     return {
         "ticker": stock.ticker,
-        "price": safe_float(price),
-        "signal": signal,
+        "price": safe(price),
         "score": score,
+        "signal": signal,
         "RSI": round(r, 2),
-        "volume_intensity": round(v, 2),
+        "volume": round(v, 2),
         "momentum": round(m, 4),
-        "trend_strength": round(t, 4),
-        "volatility": round(vol, 4),
-        "breakout": br
+        "trend": round(t, 4)
     }
 
 
 def check_signal(ticker):
     try:
-        stock = yf.Ticker(ticker)
-        return score_stock(stock)
+        return score_stock(yf.Ticker(ticker))
     except:
         return None
