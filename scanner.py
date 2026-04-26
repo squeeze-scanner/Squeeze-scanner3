@@ -2,7 +2,38 @@ import pandas as pd
 from ta.momentum import RSIIndicator
 from data import get_price_data, get_short_data
 
+def check_signal(ticker):
+    df = get_price_data(ticker)
 
+    if df is None:
+        return None
+
+    df = add_rsi(df)
+
+    if df is None or 'RSI' not in df:
+        return None
+
+    latest = df.iloc[-1]
+    short = get_short_data(ticker)
+
+    rsi = latest['RSI']
+
+    if rsi is None:
+        return None
+
+    if (
+        rsi < 30 and
+        short['short_interest'] > 0.2 and
+        short['days_to_cover'] > 5
+    ):
+        return {
+            "ticker": ticker,
+            "RSI": round(float(rsi), 2),
+            "short_interest": short['short_interest'],
+            "days_to_cover": short['days_to_cover']
+        }
+
+    return None
 # -----------------------------
 # SAFE DATA VALIDATION
 # -----------------------------
