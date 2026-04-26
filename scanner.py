@@ -3,7 +3,7 @@ from data import get_price_data, get_short_data
 
 
 # -----------------------------
-# RSI CALCULATION (SAFE)
+# SAFE RSI (1D FIXED)
 # -----------------------------
 def calculate_rsi(close):
     close = np.array(close).squeeze().reshape(-1)
@@ -26,11 +26,12 @@ def calculate_rsi(close):
 
 
 # -----------------------------
-# SCORING SYSTEM
+# SCORE (simple + stable)
 # -----------------------------
 def calculate_score(rsi, short_interest, days_to_cover):
     score = 0
 
+    # RSI contribution
     if rsi < 50:
         score += 1
     if rsi < 40:
@@ -38,9 +39,11 @@ def calculate_score(rsi, short_interest, days_to_cover):
     if rsi < 30:
         score += 1
 
+    # short interest contribution
     if short_interest > 0.25:
         score += 1
 
+    # days to cover contribution
     if days_to_cover > 5:
         score += 1
 
@@ -71,9 +74,10 @@ def check_signal(ticker):
         short["days_to_cover"]
     )
 
+    # ALWAYS RETURN (IMPORTANT FIX)
     return {
         "ticker": ticker,
-        "RSI": round(rsi, 2),
+        "RSI": round(float(rsi), 2),
         "short_interest": short["short_interest"],
         "days_to_cover": short["days_to_cover"],
         "squeeze_score": round(score, 2)
