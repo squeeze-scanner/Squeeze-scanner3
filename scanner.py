@@ -26,14 +26,35 @@ def clean_price_data(df):
 # -----------------------------
 # RSI CALCULATION
 # -----------------------------
-def add_rsi(df):
-    close = df['Close'].squeeze()
 
-    rsi_indicator = RSIIndicator(close=close, window=14)
-    df['RSI'] = rsi_indicator.rsi()
+import numpy as np
+
+def add_rsi(df):
+    close = df['Close']
+
+    # FORCE CLEAN 1D ARRAY
+    close = np.array(close).flatten()
+
+    if len(close) < 15:
+        return None
+
+    delta = np.diff(close)
+    gain = np.where(delta > 0, delta, 0)
+    loss = np.where(delta < 0, -delta, 0)
+
+    avg_gain = np.mean(gain[:14])
+    avg_loss = np.mean(loss[:14])
+
+    if avg_loss == 0:
+        rsi = 100
+    else:
+        rs = avg_gain / avg_loss
+        rsi = 100 - (100 / (1 + rs))
+
+    df = df.copy()
+    df['RSI'] = [None] * (len(df) - 1) + [rsi]
 
     return df
-
 
 # -----------------------------
 # SCORING SYSTEM (0–100)
