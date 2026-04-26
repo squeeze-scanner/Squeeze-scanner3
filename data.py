@@ -1,10 +1,12 @@
 import yfinance as yf
 
 def get_price_data(ticker):
-    return yf.download(ticker, period="3mo", interval="1d")
+    df = yf.download(ticker, period="3mo", interval="1d")
 
-def get_short_data(ticker):
-    return {
-        "short_interest": 0.25,
-        "days_to_cover": 6
-    }
+    if df is None or df.empty:
+        return None
+
+    # force clean column structure
+    df = df.reset_index()
+
+    return df
