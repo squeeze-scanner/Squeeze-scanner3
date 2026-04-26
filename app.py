@@ -1,3 +1,4 @@
+from telegram import send_alert
 import streamlit as st
 import time
 from scanner import check_signal
