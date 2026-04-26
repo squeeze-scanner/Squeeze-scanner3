@@ -3,15 +3,15 @@ import time
 from scanner import check_signal
 from telegram import send_alert
 
-st.title("🚀 Squeeze Radar V16 (Stable Engine)")
+st.title("🚀 Squeeze Radar V17 (Engine Core)")
 
 tickers_input = st.text_input(
-    "Enter tickers",
+    "Tickers",
     "GME,AMC,TSLA,NVDA,BB,PLTR"
 )
 
-refresh_rate = st.slider("Refresh (sec)", 5, 60, 10)
-start = st.toggle("Start")
+refresh_rate = st.slider("Scan Interval (sec)", 5, 60, 10)
+start = st.toggle("Start Engine")
 
 # -----------------------------
 # STATE
@@ -25,18 +25,24 @@ if "last_signal" not in st.session_state:
 if "last_alert" not in st.session_state:
     st.session_state.last_alert = {}
 
+if "last_scan" not in st.session_state:
+    st.session_state.last_scan = 0
+
 placeholder = st.empty()
 
 # -----------------------------
-# LOOP
+# ENGINE LOOP (CONTROLLED)
 # -----------------------------
 if start:
 
     now = time.time()
 
-    if now - st.session_state.get("last_run", 0) >= refresh_rate:
+    tickers = [t.strip().upper() for t in tickers_input.split(",")]
 
-        tickers = [t.strip().upper() for t in tickers_input.split(",")]
+    # -----------------------------
+    # SCAN ONLY WHEN DUE
+    # -----------------------------
+    if now - st.session_state.last_scan >= refresh_rate:
 
         results = []
 
@@ -48,13 +54,16 @@ if start:
         results.sort(key=lambda x: x["score"], reverse=True)
 
         st.session_state.cache = results
-        st.session_state.last_run = now
+        st.session_state.last_scan = now
 
     results = st.session_state.cache
 
+    # -----------------------------
+    # RENDER
+    # -----------------------------
     with placeholder.container():
 
-        st.subheader("📊 Radar")
+        st.subheader("📊 Live Radar V17")
 
         if results:
 
@@ -72,6 +81,7 @@ if start:
 
                 last = st.session_state.last_signal.get(ticker)
 
+                # ONLY ON CHANGE
                 if signal == "HIGH" and last != "HIGH":
                     st.error("🔥 " + msg)
                     send_alert("🔥 " + msg)
@@ -84,7 +94,11 @@ if start:
             st.subheader("Top 5")
 
             for r in results[:5]:
-                st.write(f"{r['ticker']} → {r['signal']} | ${r['price']} | Score {r['score']}")
+                st.write(
+                    f"{r['ticker']} → {r['signal']} | "
+                    f"${r['price']} | Score {r['score']} | "
+                    f"RSI {r['RSI']} | Vol {r['volume']}"
+                )
 
         else:
             st.warning("No data")
