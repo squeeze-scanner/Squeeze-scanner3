@@ -3,7 +3,7 @@ import time
 from scanner import check_signal
 from telegram import send_alert
 
-st.title("🚀 Squeeze Radar — V9 (Pro Live Engine)")
+st.title("🚀 Squeeze Radar — V12 (Intelligence Engine)")
 
 tickers_input = st.text_input(
     "Enter tickers (comma separated)",
@@ -15,7 +15,7 @@ refresh_rate = st.slider("Refresh interval (seconds)", 5, 60, 10)
 start = st.toggle("🟢 Start Live Radar")
 
 # -----------------------------
-# SESSION STATE (PERSISTENT MEMORY)
+# SESSION STATE (MEMORY SYSTEM)
 # -----------------------------
 if "last_alert_time" not in st.session_state:
     st.session_state.last_alert_time = {}
@@ -23,24 +23,26 @@ if "last_alert_time" not in st.session_state:
 if "run_count" not in st.session_state:
     st.session_state.run_count = 0
 
+if "seen_alerts" not in st.session_state:
+    st.session_state.seen_alerts = set()
+
 cooldown = 600  # 10 minutes
 
 placeholder = st.empty()
 
 # -----------------------------
-# AUTO RUN LOOP (SAFE STREAMLIT STYLE)
+# MAIN LOOP (SAFE STRUCTURE)
 # -----------------------------
 if start:
 
     tickers = [t.strip().upper() for t in tickers_input.split(",")]
 
-    # Increment run counter
     st.session_state.run_count += 1
 
     results = []
 
     # -----------------------------
-    # SCAN
+    # SCAN ENGINE
     # -----------------------------
     for t in tickers:
         try:
@@ -51,14 +53,16 @@ if start:
             st.write(f"Error on {t}: {e}")
 
     # -----------------------------
-    # SORT BY SIGNAL STRENGTH
+    # SORT BY SCORE OR SIGNAL
     # -----------------------------
-    order = {"HIGH": 3, "MED": 2, "LOW": 1, "NONE": 0}
-    results = sorted(results, key=lambda x: order.get(x.get("signal", "NONE")), reverse=True)
+    def score_key(x):
+        return x.get("score", 0) if "score" in x else 0
+
+    results = sorted(results, key=score_key, reverse=True)
 
     with placeholder.container():
 
-        st.subheader(f"📊 Live Radar (Run #{st.session_state.run_count})")
+        st.subheader(f"📊 V12 Live Radar (Run #{st.session_state.run_count})")
 
         if results:
             st.dataframe(results)
@@ -70,24 +74,25 @@ if start:
             for r in results:
 
                 ticker = r.get("ticker")
-                signal = r.get("signal")
-                events = r.get("events", [])
+                signal = r.get("signal", "LOW")
+                score = r.get("score", 0)
 
                 last_time = st.session_state.last_alert_time.get(ticker, 0)
 
-                msg = f"{signal} SQUEEZE SIGNAL\n{ticker}\nEvents: {', '.join(events)}"
+                msg = f"{signal} SQUEEZE\n{ticker}\nScore: {score}"
 
                 # -----------------------------
-                # HIGH SIGNAL = TELEGRAM ALERT (COOLDOWN)
+                # HIGH SIGNAL ALERT (NO DUPLICATES)
                 # -----------------------------
                 if signal == "HIGH":
 
-                    if now - last_time > cooldown:
+                    if (now - last_time > cooldown) and (ticker not in st.session_state.seen_alerts):
 
                         st.error("🔥 " + msg)
                         send_alert("🔥 " + msg)
 
                         st.session_state.last_alert_time[ticker] = now
+                        st.session_state.seen_alerts.add(ticker)
 
                 elif signal == "MED":
                     st.warning("⚠️ " + msg)
@@ -100,15 +105,16 @@ if start:
             for r in results[:5]:
                 st.write(
                     f"{r.get('ticker')} → {r.get('signal')} | "
-                    f"Events: {', '.join(r.get('events', []))} | "
-                    f"RSI {r.get('RSI')} | Vol {r.get('volume_spike')}"
+                    f"Score {r.get('score', 0)} | "
+                    f"RSI {r.get('RSI')} | "
+                    f"Vol {r.get('volume_intensity', 'N/A')}"
                 )
 
         else:
             st.warning("No signals detected")
 
     # -----------------------------
-    # SAFE AUTO REFRESH (NO LOOP)
+    # SAFE REFRESH (NO WHILE LOOP)
     # -----------------------------
     time.sleep(refresh_rate)
     st.rerun()
