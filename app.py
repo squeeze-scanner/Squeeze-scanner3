@@ -12,16 +12,19 @@ if st.button("Scan"):
 
     results = []
 
-    for t in tickers:
-        try:
-            res = check_signal(t)
-            if res:
-                results.append(res)
-        except Exception as e:
-            print(f"Error on {t}: {e}")
+for t in tickers:
+    try:
+        res = check_signal(t)
+        if res:
+            results.append(res)
+    except Exception as e:
+        print(e)
 
-    if results:
-        st.success("Signals Found")
-        st.dataframe(results)
-    else:
-        st.warning("No signals found (try more volatile tickers)")
+# 🔥 SORT BY SCORE (THIS IS KEY)
+results = sorted(results, key=lambda x: x["squeeze_score"], reverse=True)
+
+if results:
+    st.success("Squeeze Rankings")
+    st.dataframe(results)
+else:
+    st.warning("No data returned")
