@@ -3,7 +3,7 @@ from data import get_price_data, get_short_data
 
 
 # -----------------------------
-# RSI (stable + safe)
+# RSI (stable baseline)
 # -----------------------------
 def calculate_rsi(close):
     close = np.array(close).reshape(-1)
@@ -26,7 +26,19 @@ def calculate_rsi(close):
 
 
 # -----------------------------
-# VOLUME SPIKE (NEW KEY FEATURE)
+# VOLATILITY (NEW v3 SIGNAL)
+# -----------------------------
+def volatility(close):
+    close = np.array(close).reshape(-1)
+
+    if len(close) < 10:
+        return 0
+
+    return np.std(close[-20:]) / np.mean(close[-20:])
+
+
+# -----------------------------
+# VOLUME SPIKE (REFINED)
 # -----------------------------
 def volume_ratio(volume):
     vol = np.array(volume).reshape(-1)
@@ -38,40 +50,44 @@ def volume_ratio(volume):
 
 
 # -----------------------------
-# SCORING ENGINE v2
+# SCORE ENGINE v3
 # -----------------------------
-def calculate_score(rsi, short_interest, days_to_cover, vol_ratio):
+def calculate_score(rsi, short_interest, days_to_cover, vol_ratio, volat):
     score = 0
 
-    # RSI (weak momentum signal)
-    if rsi < 50:
+    # Momentum (weaker weight than before)
+    if rsi < 45:
         score += 0.5
-    if rsi < 40:
+    if rsi < 35:
         score += 0.5
-    if rsi < 30:
-        score += 1
 
-    # Short pressure
+    # Short pressure (still important)
     if short_interest > 0.25:
         score += 1
     if short_interest > 0.40:
         score += 0.5
 
-    # Days to cover (squeeze fuel)
+    # Squeeze fuel
     if days_to_cover > 5:
         score += 1
 
-    # 🔥 VOLUME SPIKE (IMPORTANT)
+    # 🔥 Volume spike (critical)
     if vol_ratio > 2:
         score += 1.5
     elif vol_ratio > 1.5:
+        score += 0.5
+
+    # 🔥 Volatility (new squeeze trigger)
+    if volat > 0.03:
+        score += 1
+    elif volat > 0.02:
         score += 0.5
 
     return round(score, 2)
 
 
 # -----------------------------
-# MAIN FUNCTION
+# MAIN SCANNER
 # -----------------------------
 def check_signal(ticker):
     df = get_price_data(ticker)
@@ -84,6 +100,7 @@ def check_signal(ticker):
 
     rsi = calculate_rsi(close)
     vol_ratio_val = volume_ratio(volume)
+    volat_val = volatility(close)
 
     short = get_short_data(ticker)
 
@@ -91,13 +108,15 @@ def check_signal(ticker):
         rsi,
         short["short_interest"],
         short["days_to_cover"],
-        vol_ratio_val
+        vol_ratio_val,
+        volat_val
     )
 
     return {
         "ticker": ticker,
         "RSI": round(rsi, 2),
         "volume_spike": round(vol_ratio_val, 2),
+        "volatility": round(volat_val, 4),
         "short_interest": short["short_interest"],
         "days_to_cover": short["days_to_cover"],
         "squeeze_score": score
