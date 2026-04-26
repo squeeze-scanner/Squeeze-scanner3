@@ -30,26 +30,22 @@ def calculate_rsi(close):
 # -----------------------------
 # SCORING ENGINE (0–3 SCALE)
 # -----------------------------
-
-def calculate_score(rsi, short_interest, days_to_cover):
+def calculate_score(rsi, short_interest, days_to_cover, volume_ratio):
     score = 0
 
-    # RSI (more generous weighting)
     if rsi < 50:
         score += 1
     if rsi < 40:
         score += 1
-    if rsi < 30:
-        score += 1
 
-    # Short interest (boost importance)
     if short_interest > 0.25:
         score += 1
-    if short_interest > 0.15:
-        score += 0.5
 
-    # Days to cover (very important for squeezes)
     if days_to_cover > 5:
+        score += 1
+
+    # 🔥 THIS IS WHAT YOU'RE MISSING
+    if volume_ratio > 1.5:
         score += 1
 
     return score
