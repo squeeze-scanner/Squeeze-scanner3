@@ -3,13 +3,10 @@ from data import get_price_data, get_short_data
 
 
 # -----------------------------
-# SAFE RSI (FORCES 1D CLEAN DATA)
+# RSI CALCULATION (SAFE)
 # -----------------------------
 def calculate_rsi(close):
-    close = np.array(close)
-
-    # 🔥 FORCE FLAT ARRAY (KEY FIX)
-    close = close.squeeze().reshape(-1)
+    close = np.array(close).squeeze().reshape(-1)
 
     if len(close) < 15:
         return None
@@ -25,13 +22,11 @@ def calculate_rsi(close):
         return 100
 
     rs = avg_gain / avg_loss
-    rsi = 100 - (100 / (1 + rs))
-
-    return float(rsi)
+    return 100 - (100 / (1 + rs))
 
 
 # -----------------------------
-# SCORING ENGINE
+# SCORING SYSTEM
 # -----------------------------
 def calculate_score(rsi, short_interest, days_to_cover):
     score = 0
@@ -53,7 +48,7 @@ def calculate_score(rsi, short_interest, days_to_cover):
 
 
 # -----------------------------
-# MAIN FUNCTION
+# MAIN FUNCTION (NO FILTERING)
 # -----------------------------
 def check_signal(ticker):
     df = get_price_data(ticker)
@@ -61,7 +56,6 @@ def check_signal(ticker):
     if df is None or 'Close' not in df:
         return None
 
-    # 🔥 HARD FORCE 1D ARRAY HERE (CRITICAL FIX)
     close = np.array(df['Close']).squeeze().reshape(-1)
 
     rsi = calculate_rsi(close)
@@ -77,15 +71,10 @@ def check_signal(ticker):
         short["days_to_cover"]
     )
 
-    print(f"{ticker} | RSI:{rsi:.2f} | SCORE:{score}")
-
-    if score >= 1:
-        return {
-            "ticker": ticker,
-            "RSI": round(rsi, 2),
-            "short_interest": short["short_interest"],
-            "days_to_cover": short["days_to_cover"],
-            "squeeze_score": round(score, 2)
-        }
-
-    return None
+    return {
+        "ticker": ticker,
+        "RSI": round(rsi, 2),
+        "short_interest": short["short_interest"],
+        "days_to_cover": short["days_to_cover"],
+        "squeeze_score": round(score, 2)
+    }
