@@ -1,10 +1,10 @@
 import streamlit as st
 from scanner import check_signal
 
-st.title("🚀 Squeeze Radar v3")
+st.title("🚀 Squeeze Radar v4")
 
 tickers_input = st.text_input(
-    "Enter tickers (comma separated)",
+    "Enter tickers",
     "GME,AMC,TSLA,NVDA,BB,PLTR"
 )
 
@@ -22,10 +22,10 @@ if st.button("Run Radar"):
         except:
             pass
 
-    # 🔥 SORT BY SCORE (REAL SCANNER BEHAVIOUR)
+    # 🔥 SORT BY SCORE
     results = sorted(results, key=lambda x: x["squeeze_score"], reverse=True)
 
-    st.subheader("📊 Squeeze Candidates")
+    st.subheader("📊 Ranked Squeeze Candidates")
 
     if results:
         st.dataframe(results)
