@@ -7,7 +7,7 @@ def arr(x):
 
 
 # -----------------------------
-# INDICATORS (SAFE)
+# INDICATORS (CLEANED + STABLE)
 # -----------------------------
 def rsi(close):
     c = arr(close)
@@ -55,7 +55,37 @@ def breakout(close):
 
 
 # -----------------------------
-# CORE SCORING
+# SQUEEZE + SETUP ENGINE (NEW)
+# -----------------------------
+def setup_quality(v, m, t, br, r):
+
+    score = 0.0
+
+    # volume expansion
+    if v > 1.5:
+        score += 0.30
+    elif v > 1.2:
+        score += 0.20
+
+    # momentum confirmation
+    score += min(abs(m) * 0.4, 0.25)
+
+    # trend alignment
+    score += min(abs(t) * 0.4, 0.25)
+
+    # breakout confirmation
+    if br:
+        score += 0.20
+
+    # RSI edge (oversold / overbought extremes)
+    if r < 30 or r > 70:
+        score += 0.10
+
+    return min(score, 1.0)
+
+
+# -----------------------------
+# CORE SCORING ENGINE
 # -----------------------------
 def score_stock(ticker):
 
@@ -72,6 +102,7 @@ def score_stock(ticker):
         volume = df["Volume"].values
         price = float(df["Close"].iloc[-1])
 
+        # indicators
         r = rsi(close)
         v = volume_intensity(volume)
         m = momentum(close)
@@ -79,7 +110,7 @@ def score_stock(ticker):
         br = breakout(close)
 
         # -----------------------------
-        # BULL / BEAR MODEL
+        # BULL / BEAR MODEL (IMPROVED BALANCE)
         # -----------------------------
         bull = 0.5
         bear = 0.5
@@ -89,11 +120,11 @@ def score_stock(ticker):
         elif r > 65:
             bear += 0.15
 
-        bull += max(0, m * 0.6)
-        bear += max(0, -m * 0.6)
+        bull += max(0, m * 0.55)
+        bear += max(0, -m * 0.55)
 
-        bull += max(0, t * 0.5)
-        bear += max(0, -t * 0.5)
+        bull += max(0, t * 0.45)
+        bear += max(0, -t * 0.45)
 
         if v > 1.3:
             bull += 0.1
@@ -108,20 +139,23 @@ def score_stock(ticker):
         confidence = abs(bull - bear)
 
         # -----------------------------
-        # SIGNAL
+        # SIGNAL (CLEAN THRESHOLDING)
         # -----------------------------
-        if bull > 0.60:
+        if bull > 0.62:
             signal = "BULLISH"
-        elif bear > 0.60:
+        elif bear > 0.62:
             signal = "BEARISH"
         else:
             signal = "NEUTRAL"
 
         # -----------------------------
-        # SQUEEZE SCORE
+        # NEW: SETUP QUALITY SCORE
         # -----------------------------
+        setup = setup_quality(v, m, t, br, r)
+
+        # squeeze is now REALISTIC (not inflated)
         squeeze = (
-            (v * 0.35) +
+            v * 0.3 +
             (1.0 if br else 0.0) +
             abs(m) +
             abs(t)
@@ -130,27 +164,34 @@ def score_stock(ticker):
         squeeze = min(squeeze, 1.0)
 
         # -----------------------------
-        # ALERTS
+        # ALERTS (BETTER FILTERING)
         # -----------------------------
         alerts = []
 
-        if bull > 0.70 and confidence > 0.15:
-            alerts.append("HIGH_BULL_CONFIDENCE")
+        if setup > 0.75 and confidence > 0.15:
+            alerts.append("EXTREME_SETUP")
 
-        if bear > 0.70 and confidence > 0.15:
-            alerts.append("HIGH_BEAR_CONFIDENCE")
+        if setup > 0.60 and squeeze > 0.5:
+            alerts.append("STRONG_SETUP")
 
-        if squeeze > 0.5:
-            alerts.append("HIGH_SQUEEZE_POTENTIAL")
+        if bull > 0.72:
+            alerts.append("BULLISH_PRESSURE")
+
+        if bear > 0.72:
+            alerts.append("BEARISH_PRESSURE")
 
         # -----------------------------
-        # FINAL OUTPUT (IMPORTANT FIX)
+        # FINAL SCORE (IMPORTANT UPGRADE)
         # -----------------------------
-        score = (bull * 100 + squeeze * 50 + confidence * 100) / 3
+        score = (
+            setup * 100 +
+            squeeze * 60 +
+            confidence * 80
+        ) / 3
 
         return {
             "ticker": ticker,
-            "price": round(price, 2),
+            "price": price,
 
             "signal": signal,
 
@@ -159,8 +200,9 @@ def score_stock(ticker):
             "confidence": round(confidence * 100, 1),
 
             "squeeze_score": round(squeeze * 100, 1),
+            "setup_score": round(setup * 100, 1),
 
-            "score": round(score, 2),   # ✅ CRITICAL FIX for app.py
+            "score": round(score, 2),
 
             "alerts": alerts
         }
