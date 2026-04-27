@@ -1,49 +1,101 @@
-# universe.py
 import random
+import time
 
 # -----------------------------
-# CORE MARKET (LIQUID)
+# SECTOR MAP
 # -----------------------------
-CORE = [
-    "AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GOOG",
-    "JPM","GS","V","MA","BAC","WFC","C","MS",
-    "SPY","QQQ","IWM","DIA","ARKK","XLF","XLK",
-    "AMD","INTC","NFLX","PYPL","ORCL","CRM","ADBE",
-    "XOM","CVX","BA","CAT",
-    "BABA","TSM","PDD",
-    "DIS","KO","PEP","WMT","T","VZ"
-]
+SECTORS = {
+    "TECH": [
+        "AAPL","MSFT","NVDA","GOOGL","META","AMZN","AMD","INTC",
+        "ADBE","CRM","ORCL","NFLX","NOW","SNOW","PLTR"
+    ],
+
+    "FINANCE": [
+        "JPM","GS","BAC","C","MS","WFC","V","MA","PYPL"
+    ],
+
+    "MOMENTUM_GROWTH": [
+        "TSLA","UBER","LYFT","SHOP","SQ","COIN","HOOD","RIVN","LCID","SOFI"
+    ],
+
+    "MEME": [
+        "GME","AMC","BB","KOSS","WISH","NOK","CLOV","MULN","FFIE","HKD"
+    ],
+
+    "HEAVY_INDEX": [
+        "SPY","QQQ","IWM","DIA","ARKK"
+    ],
+
+    "COMMODITY_DEFENSIVE": [
+        "XOM","CVX","KO","PEP","WMT","DIS","BA","CAT"
+    ],
+
+    "INTERNATIONAL": [
+        "BABA","TSM","PDD","TCEHY","JD"
+    ]
+}
 
 # -----------------------------
-# VOLATILITY / GROWTH
+# SECTOR ROTATION STATE
 # -----------------------------
-VOLATILITY = [
-    "PLTR","SOFI","RIVN","LCID","COIN","HOOD",
-    "SNAP","ROKU","AFRM","UPST","DKNG","NET",
-    "CRWD","ZS","PANW","MDB","SNOW","DDOG",
-    "SHOP","SQ","UBER","LYFT","ABNB"
-]
+_sector_scores = {
+    k: 1.0 for k in SECTORS.keys()
+}
+
+_last_update = 0
+
 
 # -----------------------------
-# MEME / RETAIL FLOW
+# UPDATE SECTOR WEIGHTS
 # -----------------------------
-MEME = [
-    "GME","AMC","BB","KOSS","EXPR","BYND","TLRY",
-    "SNDL","WISH","NOK","CLOV","WKHS","SPCE",
-    "MARA","RIOT","BBBY","HKD","MULN","FFIE",
-    "APRN","CEI","TRKA","AI","IONQ","QS"
-]
+def update_sector_weights():
+
+    global _last_update
+
+    now = time.time()
+
+    # slowly decay rotation influence
+    if now - _last_update < 300:
+        return
+
+    for k in _sector_scores:
+        # random walk bias (simulates “market rotation”)
+        _sector_scores[k] *= random.uniform(0.95, 1.08)
+
+        # clamp
+        _sector_scores[k] = max(0.5, min(_sector_scores[k], 2.5))
+
+    _last_update = now
+
 
 # -----------------------------
-# UNIVERSE BUILDER (SMART)
+# BUILD PRIORITY UNIVERSE
 # -----------------------------
-def get_universe(user_input=None, max_size=100):
+def get_universe(user_input=None, max_size=120):
 
-    # combine all pools
-    universe = CORE + VOLATILITY + MEME
+    update_sector_weights()
+
+    universe = []
 
     # -----------------------------
-    # USER INPUT
+    # WEIGHTED SECTOR SAMPLING
+    # -----------------------------
+    for sector, tickers in SECTORS.items():
+
+        weight = _sector_scores.get(sector, 1.0)
+
+        # more weight = more tickers selected
+        count = int(len(tickers) * weight / 2)
+
+        selected = random.sample(
+            tickers,
+            k=min(len(tickers), max(2, count))
+        )
+
+        universe.extend(selected)
+
+    # -----------------------------
+    # USER INPUT BOOST (HIGHEST PRIORITY)
     # -----------------------------
     if user_input:
         manual = [
@@ -51,17 +103,14 @@ def get_universe(user_input=None, max_size=100):
             for t in user_input.split(",")
             if t.strip()
         ]
-        universe.extend(manual)
+        universe.extend(manual * 2)  # boost importance
 
     # remove duplicates
     universe = list(set(universe))
 
     # -----------------------------
-    # 🔥 RANDOM ROTATION (KEY FEATURE)
+    # SHUFFLE + PRIORITY EFFECT
     # -----------------------------
     random.shuffle(universe)
 
-    # -----------------------------
-    # LIMIT SIZE (CRITICAL FOR SPEED)
-    # -----------------------------
     return universe[:max_size]
