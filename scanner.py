@@ -1,13 +1,11 @@
 import numpy as np
 import yfinance as yf
 
-
 # -----------------------------
 # HELPERS
 # -----------------------------
 def arr(x):
     return np.array(x).reshape(-1)
-
 
 def safe(x, default=0.0):
     try:
@@ -19,7 +17,7 @@ def safe(x, default=0.0):
 
 
 # -----------------------------
-# FAST FILTER
+# FAST FILTER (RELAXED - IMPORTANT FIX)
 # -----------------------------
 def fast_filter(df):
     try:
@@ -30,11 +28,12 @@ def fast_filter(df):
         volume = df["Volume"].values
 
         price_change = (close[-1] / close[-2]) - 1 if close[-2] != 0 else 0
-        vol_ratio = volume[-1] / (np.mean(volume) if np.mean(volume) != 0 else 1)
+        vol_ratio = volume[-1] / (np.mean(volume[-20:]) if len(volume) >= 20 else np.mean(volume))
 
         fast_score = (price_change * 100) + vol_ratio
 
-        return fast_score if fast_score > 1.2 else None
+        # 🔥 FIX: much less strict so universe actually works
+        return fast_score if fast_score > -2 else None
 
     except:
         return None
@@ -101,65 +100,33 @@ def breakout(close):
 
 
 # -----------------------------
-# SHORT DATA
+# SQUEEZE ENGINE (FIXED - NO INFO DEPENDENCY)
 # -----------------------------
-def get_short_data(info):
-    short_pct = safe(info.get("shortPercentOfFloat"))
-    days_cover = safe(info.get("shortRatio"))
+def squeeze_score(v, vol, br, m, t):
+    score = 0
 
-    if short_pct is not None:
-        short_pct = short_pct * 100
-
-    return short_pct, days_cover
-
-
-# -----------------------------
-# PROBABILITY ENGINE
-# -----------------------------
-def compute_probabilities(r, v, m, t, vol, br, short_pct, days_cover):
-
-    bullish = 0.50
-    bearish = 0.50
-
-    # RSI
-    if r < 30:
-        bullish += 0.10
-    elif r > 70:
-        bearish += 0.10
-
-    # momentum
-    bullish += max(0, m * 1.5)
-    bearish += max(0, -m * 1.5)
-
-    # trend
-    bullish += max(0, t * 1.5)
-    bearish += max(0, -t * 1.5)
-
-    # volume
+    # volume spike
     if v > 1.5:
-        bullish += 0.05
+        score += 0.25
+    elif v > 1.2:
+        score += 0.15
+
+    # volatility expansion
+    score += min(vol * 0.4, 0.25)
 
     # breakout
     if br:
-        bullish += 0.10
+        score += 0.2
 
-    # squeeze pressure
-    squeeze = 0.0
-    if short_pct:
-        squeeze += min(short_pct / 100, 0.25)
+    # trend + momentum alignment
+    score += max(0, m * 0.2)
+    score += max(0, t * 0.2)
 
-    if days_cover:
-        squeeze += min(days_cover / 20, 0.25)
-
-    total = bullish + bearish
-    bullish /= total
-    bearish /= total
-
-    return bullish, bearish, squeeze
+    return min(score, 1.0)
 
 
 # -----------------------------
-# CORE ENGINE (V26)
+# CORE ENGINE
 # -----------------------------
 def score_stock(ticker):
 
@@ -170,17 +137,13 @@ def score_stock(ticker):
         if df is None or df.empty or len(df) < 30:
             return None
 
+        # fast filter
         if fast_filter(df) is None:
             return None
 
         close = df["Close"].values
         volume = df["Volume"].values
         price = df["Close"].iloc[-1]
-
-        try:
-            info = stock.info
-        except:
-            info = {}
 
         r = rsi(close)
         v = volume_intensity(volume)
@@ -189,44 +152,64 @@ def score_stock(ticker):
         vol = volatility(close)
         br = breakout(close)
 
-        short_pct, days_cover = get_short_data(info)
-
-        bullish, bearish, squeeze = compute_probabilities(
-            r, v, m, t, vol, br, short_pct, days_cover
-        )
-
-        confidence = abs(bullish - bearish)
+        squeeze = squeeze_score(v, vol, br, m, t)
 
         # -----------------------------
-        # SIGNAL LABEL
+        # BULL / BEAR MODEL
         # -----------------------------
-        if bullish > 0.65:
+        bull = 0.5
+        bear = 0.5
+
+        if r < 30:
+            bull += 0.1
+        elif r > 70:
+            bear += 0.1
+
+        bull += max(0, m * 0.4)
+        bear += max(0, -m * 0.4)
+
+        bull += max(0, t * 0.4)
+        bear += max(0, -t * 0.4)
+
+        if v > 1.5:
+            bull += 0.05
+
+        if br:
+            bull += 0.1
+
+        total = bull + bear
+        bull /= total
+        bear /= total
+
+        confidence = abs(bull - bear)
+
+        # -----------------------------
+        # SIGNALS
+        # -----------------------------
+        if bull > 0.65:
             signal = "BULLISH"
-        elif bearish > 0.65:
+        elif bear > 0.65:
             signal = "BEARISH"
         else:
             signal = "NEUTRAL"
 
-        # -----------------------------
-        # ALERT FLAGS (NEW V26)
-        # -----------------------------
         alerts = []
 
-        if bullish >= 0.70 and confidence >= 0.20:
+        if bull > 0.7 and confidence > 0.2:
             alerts.append("🔥 HIGH_BULL_CONFIDENCE")
 
-        if bearish >= 0.70 and confidence >= 0.20:
+        if bear > 0.7 and confidence > 0.2:
             alerts.append("🧨 HIGH_BEAR_CONFIDENCE")
 
-        if squeeze >= 0.35:
+        if squeeze > 0.6:
             alerts.append("🚀 HIGH_SQUEEZE_POTENTIAL")
 
         return {
             "ticker": ticker,
             "price": round(price, 2),
 
-            "bull_prob": round(bullish * 100, 1),
-            "bear_prob": round(bearish * 100, 1),
+            "bull_prob": round(bull * 100, 1),
+            "bear_prob": round(bear * 100, 1),
             "confidence": round(confidence * 100, 1),
 
             "squeeze_score": round(squeeze * 100, 1),
@@ -237,10 +220,7 @@ def score_stock(ticker):
             "RSI": round(r, 2),
             "volume": round(v, 2),
             "momentum": round(m, 4),
-            "trend": round(t, 4),
-
-            "short_%": round(short_pct, 2) if short_pct else "N/A",
-            "days_to_cover": round(days_cover, 2) if days_cover else "N/A"
+            "trend": round(t, 4)
         }
 
     except:
