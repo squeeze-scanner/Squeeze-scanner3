@@ -8,6 +8,7 @@ from telegram import send_alert
 # -----------------------------
 st.title("🚀 V27 Squeeze Radar (Predictive Engine)")
 
+
 # -----------------------------
 # INPUT
 # -----------------------------
@@ -20,8 +21,9 @@ refresh_rate = st.slider("Refresh interval (seconds)", 5, 60, 10)
 scan_size = st.slider("📊 Max tickers to scan", 10, 150, 50)
 start = st.toggle("🟢 Start Scanner")
 
+
 # -----------------------------
-# CACHE UNIVERSE (IMPORTANT FIX)
+# UNIVERSE (CACHED)
 # -----------------------------
 @st.cache_data(ttl=300)
 def get_full_universe():
@@ -65,7 +67,6 @@ if "last_alert" not in st.session_state:
 if "alerted" not in st.session_state:
     st.session_state.alerted = set()
 
-placeholder = st.empty()
 cooldown = 600
 
 
@@ -76,17 +77,13 @@ if start:
 
     now = time.time()
 
-    # only scan when interval passes
     if now - st.session_state.last_run >= refresh_rate:
 
-        universe = merge_universe(user_tickers)
-
-        # IMPORTANT: limit BEFORE scanning
-        tickers = universe[:scan_size]
+        universe = merge_universe(user_tickers)[:scan_size]
 
         results = []
 
-        for t in tickers:
+        for t in universe:
             try:
                 res = check_signal(t)
                 if res:
@@ -94,75 +91,96 @@ if start:
             except:
                 continue
 
-        # sort safely
-        results.sort(key=lambda x: x.get("score", 0), reverse=True)
+        results.sort(key=lambda x: x.get("confidence", 0), reverse=True)
 
         st.session_state.cache = results
         st.session_state.last_run = now
 
     results = st.session_state.cache
 
+
     # -----------------------------
     # UI
     # -----------------------------
-    with placeholder.container():
+    st.subheader("📊 Market Radar")
 
-        st.subheader("📊 Market Radar")
+    st.write(f"Scanning: {scan_size} tickers")
 
-        st.write(f"Universe size: {len(merge_universe(user_tickers))}")
-        st.write(f"Scanning: {scan_size} tickers")
+    if results:
 
-        if results:
+        st.dataframe(results)
 
-            st.dataframe(results)
+        st.subheader("🚨 Alerts")
 
-            st.subheader("🚨 Alerts")
+        for r in results:
 
-            for r in results:
+            ticker = r.get("ticker")
+            signal = r.get("signal")
+            price = r.get("price")
 
-                ticker = r.get("ticker", "N/A")
-                signal = r.get("signal", "LOW")
-                score = r.get("score", 0)
-                price = r.get("price", "N/A")
-                squeeze = r.get("squeeze_pressure", 0)
+            squeeze = r.get("squeeze_score", 0)
+            bull = r.get("bull_prob", 0)
+            bear = r.get("bear_prob", 0)
 
-                msg = (
-                    f"{ticker} | {signal} | Score {score} | ${price} | "
-                    f"Squeeze {squeeze}%"
-                )
+            alert_tags = r.get("alerts", [])
 
-                last_time = st.session_state.last_alert.get(ticker, 0)
+            # -----------------------------
+            # BUILD MESSAGE (FIXED)
+            # -----------------------------
+            msg = (
+                f"{ticker} | {signal} | ${price}\n"
+                f"Bull {bull}% | Bear {bear}%\n"
+                f"Squeeze {squeeze}%\n"
+                f"Alerts: {', '.join(alert_tags) if alert_tags else 'None'}"
+            )
 
-                # -----------------------------
-                # ALERT LOGIC
-                # -----------------------------
-                if signal == "HIGH":
+            last_time = st.session_state.last_alert.get(ticker, 0)
 
-                    if ticker not in st.session_state.alerted and now - last_time > cooldown:
-                        st.error("🔥 " + msg)
-                        send_alert("🔥 " + msg)
+            # -----------------------------
+            # ALERT TRIGGER LOGIC (FIXED)
+            # -----------------------------
+            should_alert = (
+                "HIGH_BULL_CONFIDENCE" in alert_tags or
+                "HIGH_BEAR_CONFIDENCE" in alert_tags or
+                "HIGH_SQUEEZE_POTENTIAL" in alert_tags
+            )
 
+            if should_alert:
+
+                if ticker not in st.session_state.alerted and now - last_time > cooldown:
+
+                    st.error("🔥 " + msg)
+
+                    success = send_alert("🔥 " + msg)
+
+                    # only mark if Telegram succeeds
+                    if success:
                         st.session_state.alerted.add(ticker)
                         st.session_state.last_alert[ticker] = now
 
-                elif signal == "MED":
-                    st.warning("⚠️ " + msg)
+            elif signal == "BULLISH":
+                st.success(msg)
 
-            # -----------------------------
-            # TOP 10
-            # -----------------------------
-            st.subheader("🏆 Top 10 Candidates")
+            elif signal == "BEARISH":
+                st.warning(msg)
 
-            for r in results[:10]:
-                st.write(
-                    f"{r.get('ticker')} → {r.get('signal')} | "
-                    f"${r.get('price')} | Score {r.get('score')} | "
-                    f"Squeeze {r.get('squeeze_pressure', 0)}"
-                )
+            else:
+                st.info(msg)
 
-        else:
-            st.warning("No signals detected yet")
 
-    # IMPORTANT: prevents CPU spam but keeps UI alive
-    time.sleep(0.5)
-    st.rerun()
+        # -----------------------------
+        # TOP 10
+        # -----------------------------
+        st.subheader("🏆 Top 10 Candidates")
+
+        for r in results[:10]:
+            st.write(
+                f"{r.get('ticker')} → {r.get('signal')} | "
+                f"${r.get('price')} | "
+                f"Bull {r.get('bull_prob')}% | "
+                f"Bear {r.get('bear_prob')}% | "
+                f"Squeeze {r.get('squeeze_score')}%"
+            )
+
+    else:
+        st.warning("No signals detected yet")
