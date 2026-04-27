@@ -1,187 +1,127 @@
-import streamlit as st
-import time
-from scanner import check_signal
-from telegram import send_alert
+import numpy as np
+import yfinance as yf
 
-# -----------------------------
-# TITLE
-# -----------------------------
-st.title("🚀 V27 Squeeze Radar (Predictive Engine)")
+def arr(x):
+    return np.array(x).reshape(-1)
 
-# -----------------------------
-# INPUT
-# -----------------------------
-user_tickers = st.text_input(
-    "➕ Add extra tickers (comma separated)",
-    "GME,AMC,TSLA"
-)
+def rsi(close):
+    c = arr(close)
+    if len(c) < 15:
+        return 50
 
-refresh_rate = st.slider("Refresh interval (seconds)", 5, 60, 10)
-scan_size = st.slider("📊 Max tickers to scan", 10, 150, 50)
-start = st.toggle("🟢 Start Scanner")
+    delta = np.diff(c)
+    gain = np.where(delta > 0, delta, 0)
+    loss = np.where(delta < 0, -delta, 0)
 
-# -----------------------------
-# UNIVERSE
-# -----------------------------
-@st.cache_data(ttl=300)
-def get_full_universe():
-    base = [
-        "AAPL","MSFT","NVDA","AMZN","META","GOOGL","GOOG","TSLA","BRK-B","JPM",
-        "V","UNH","XOM","PG","MA","HD","CVX","LLY","ABBV","AVGO",
-        "PEP","COST","MRK","KO","WMT","BAC","DIS","ADBE","NFLX","CRM"
-    ]
+    avg_gain = np.mean(gain[-14:])
+    avg_loss = np.mean(loss[-14:]) + 1e-9
 
-    momentum = [
-        "PLTR","GME","AMC","BB","NIO","SOFI","RIVN","LCID","COIN",
-        "AMD","INTC","PYPL","UBER","LYFT","SQ","SHOP","BABA","BA",
-        "ORCL","T","VZ","INTU"
-    ]
-
-    return list(set(base + momentum))
+    rs = avg_gain / avg_loss
+    return 100 - (100 / (1 + rs))
 
 
-def merge_universe(user_input):
-    universe = get_full_universe()
-
-    if user_input:
-        manual = [t.strip().upper() for t in user_input.split(",") if t.strip()]
-        universe.extend(manual)
-
-    return list(set(universe))
+def volume_intensity(volume):
+    v = arr(volume)
+    if len(v) < 20:
+        return 1.0
+    return v[-1] / (np.mean(v[-20:]) + 1e-9)
 
 
-# -----------------------------
-# STATE
-# -----------------------------
-if "cache" not in st.session_state:
-    st.session_state.cache = []
+def momentum(close):
+    c = arr(close)
+    if len(c) < 20:
+        return 0.0
+    return (c[-1] / c[-10]) - 1
 
-if "last_run" not in st.session_state:
-    st.session_state.last_run = 0
 
-if "last_alert" not in st.session_state:
-    st.session_state.last_alert = {}
+def trend_strength(close):
+    c = arr(close)
+    if len(c) < 30:
+        return 0.0
+    return (np.mean(c[-10:]) / np.mean(c[-30:])) - 1
 
-if "alerted" not in st.session_state:
-    st.session_state.alerted = set()
 
-cooldown = 600
+def breakout(close):
+    c = arr(close)
+    return len(c) > 20 and c[-1] > np.max(c[-20:-1])
 
-# -----------------------------
-# MAIN ENGINE
-# -----------------------------
-if start:
 
-    now = time.time()
+def score_stock(ticker):
 
-    if now - st.session_state.last_run >= refresh_rate:
+    try:
+        df = yf.Ticker(ticker).history(period="3mo")
+        if df is None or len(df) < 30:
+            return None
 
-        universe = merge_universe(user_tickers)[:scan_size]
+        close = df["Close"].values
+        volume = df["Volume"].values
+        price = df["Close"].iloc[-1]
 
-        results = []
+        r = rsi(close)
+        v = volume_intensity(volume)
+        m = momentum(close)
+        t = trend_strength(close)
+        br = breakout(close)
 
-        for t in universe:
-            try:
-                res = check_signal(t)
-                if res:
-                    results.append(res)
-            except:
-                continue
+        # ---------------- BULL / BEAR ----------------
+        bull = 0.5
+        bear = 0.5
 
-        results.sort(key=lambda x: x.get("confidence", 0), reverse=True)
+        if r < 35: bull += 0.15
+        if r > 65: bear += 0.15
 
-        st.session_state.cache = results
-        st.session_state.last_run = now
+        bull += max(0, m * 0.6)
+        bear += max(0, -m * 0.6)
 
-    results = st.session_state.cache
+        bull += max(0, t * 0.5)
+        bear += max(0, -t * 0.5)
 
-    # -----------------------------
-    # UI
-    # -----------------------------
-    st.subheader("📊 Market Radar")
+        if v > 1.3: bull += 0.1
+        if br: bull += 0.15
 
-    st.write(f"Scanning: {scan_size} tickers")
+        total = bull + bear
+        bull /= total
+        bear /= total
 
-    if results:
+        confidence = abs(bull - bear)
 
-        st.dataframe(results)
+        # ---------------- SIGNAL FIX ----------------
+        if bull > 0.60:
+            signal = "BULLISH"
+        elif bear > 0.60:
+            signal = "BEARISH"
+        else:
+            signal = "NEUTRAL"
 
-        st.subheader("🚨 Alerts")
+        # ---------------- ALERTS ----------------
+        alerts = []
 
-        for r in results:
+        if bull > 0.70 and confidence > 0.15:
+            alerts.append("HIGH_BULL_CONFIDENCE")
 
-            ticker = r.get("ticker")
-            signal = r.get("signal")
-            price = r.get("price")
+        if bear > 0.70 and confidence > 0.15:
+            alerts.append("HIGH_BEAR_CONFIDENCE")
 
-            squeeze = r.get("squeeze_score", 0)
-            bull = r.get("bull_prob", 0)
-            bear = r.get("bear_prob", 0)
-            alerts = r.get("alerts", [])
+        squeeze = v * 0.3 + (1 if br else 0) + abs(m) + abs(t)
+        squeeze = min(squeeze / 2, 1.0)
 
-            # -----------------------------
-            # PRIORITY CLASSIFICATION (IMPORTANT FIX)
-            # -----------------------------
-            if "HIGH_SQUEEZE_POTENTIAL" in alerts:
-                alert_type = "🚀 SQUEEZE"
+        if squeeze > 0.5:
+            alerts.append("HIGH_SQUEEZE_POTENTIAL")
 
-            elif "HIGH_BULL_CONFIDENCE" in alerts:
-                alert_type = "🐂 BULLISH"
+        return {
+            "ticker": ticker,
+            "price": round(price, 2),
+            "signal": signal,
+            "bull_prob": round(bull * 100, 1),
+            "bear_prob": round(bear * 100, 1),
+            "confidence": round(confidence * 100, 1),
+            "squeeze_score": round(squeeze * 100, 1),
+            "alerts": alerts
+        }
 
-            elif "HIGH_BEAR_CONFIDENCE" in alerts:
-                alert_type = "🐻 BEARISH"
+    except:
+        return None
 
-            else:
-                alert_type = None
 
-            # -----------------------------
-            # MESSAGE FORMAT
-            # -----------------------------
-            msg = (
-                f"{ticker} | {alert_type or signal} | ${price}\n"
-                f"Bull {bull}% | Bear {bear}%\n"
-                f"Squeeze {squeeze}%"
-            )
-
-            last_time = st.session_state.last_alert.get(ticker, 0)
-
-            # -----------------------------
-            # ALERT TRIGGER
-            # -----------------------------
-            if alert_type:
-
-                if ticker not in st.session_state.alerted and now - last_time > cooldown:
-
-                    st.error("🔥 " + msg)
-
-                    success = send_alert("🔥 " + msg)
-
-                    if success:
-                        st.session_state.alerted.add(ticker)
-                        st.session_state.last_alert[ticker] = now
-
-            else:
-                # normal display
-                if signal == "BULLISH":
-                    st.success(msg)
-                elif signal == "BEARISH":
-                    st.warning(msg)
-                else:
-                    st.info(msg)
-
-        # -----------------------------
-        # TOP 10
-        # -----------------------------
-        st.subheader("🏆 Top 10 Candidates")
-
-        for r in results[:10]:
-            st.write(
-                f"{r.get('ticker')} → {r.get('signal')} | "
-                f"${r.get('price')} | "
-                f"Bull {r.get('bull_prob')}% | "
-                f"Bear {r.get('bear_prob')}% | "
-                f"Squeeze {r.get('squeeze_score')}%"
-            )
-
-    else:
-        st.warning("No signals detected yet")
+def check_signal(ticker):
+    return score_stock(ticker)
