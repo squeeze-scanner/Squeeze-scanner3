@@ -17,6 +17,7 @@ user_tickers = st.text_input(
 refresh_rate = st.slider("Refresh interval (seconds)", 5, 60, 15)
 start = st.toggle("🟢 Start Scanner")
 
+
 # -----------------------------
 # UNIVERSE
 # -----------------------------
@@ -70,6 +71,9 @@ if start:
 
     now = time.time()
 
+    # -----------------------------
+    # SCAN
+    # -----------------------------
     if now - st.session_state.last_run >= refresh_rate:
 
         tickers = merge_universe(user_tickers)[:120]
@@ -84,7 +88,7 @@ if start:
             except Exception as e:
                 print("[APP ERROR]", t, e)
 
-        results.sort(key=lambda x: x.get("squeeze_score", 0), reverse=True)
+        results.sort(key=lambda x: x.get("setup_score", 0), reverse=True)
 
         st.session_state.cache = results
         st.session_state.last_run = now
@@ -114,69 +118,66 @@ if start:
                 squeeze = r.get("squeeze_score", 0)
                 bull = r.get("bull_prob", 0)
                 bear = r.get("bear_prob", 0)
+                setup = r.get("setup_score", 0)
+                alerts = r.get("alerts", [])
 
-                # 🔥 SAFE trade_plan access (CRITICAL FIX)
-   trade = r.get("trade_plan") or {}
+                msg = (
+                    f"{ticker} | {signal} | ${price}\n"
+                    f"Setup {setup}%\n"
+                    f"Bull {bull}% | Bear {bear}% | Squeeze {squeeze}%"
+                )
 
-rr = trade.get("rr", 0)
-entry = trade.get("entry", (0, 0))
-stop = trade.get("stop", 0)
-t1 = trade.get("target1", 0)
-t2 = trade.get("target2", 0)
-setup_type = trade.get("type", "UNKNOWN")
+                last_time = st.session_state.last_alert.get(ticker, 0)
 
-msg = (
-    f"{ticker} | {signal} | ${price}\n"
-    f"Entry {entry} | Stop {stop}\n"
-    f"T1 {t1} | T2 {t2} | RR {rr}\n"
-    f"Bull {bull}% | Bear {bear}% | Squeeze {squeeze}%"
-)
+                # -----------------------------
+                # FIXED ALERT LOGIC
+                # -----------------------------
+                is_extreme = setup >= 75 and bull >= 70
+                is_strong = setup >= 60 and squeeze >= 55
+                has_signal_alert = len(alerts) > 0
 
-last_time = st.session_state.last_alert.get(ticker, 0)
+                is_alert = is_extreme or is_strong or has_signal_alert
 
-# -----------------------------
-# SAFE ALERT CONDITIONS (FIXED)
-# -----------------------------
-is_high_quality = (rr is not None and rr >= 1.2 and squeeze >= 55)
-is_extreme = (rr is not None and rr >= 1.8 and bull >= 70)
+                # DEBUG (keep while testing)
+                st.write(f"DEBUG {ticker}: setup={setup} squeeze={squeeze} bull={bull}")
 
-is_alert = is_high_quality or is_extreme
+                if is_alert:
 
-# DEBUG (temporary but IMPORTANT)
-st.write(f"DEBUG {ticker}: RR={rr} SQ={squeeze} BULL={bull}")
+                    if ticker not in st.session_state.alerted and now - last_time > cooldown:
 
-if is_alert:
+                        if is_extreme:
+                            alert_msg = "🔥 EXTREME TRADE SETUP: " + msg
+                            st.error(alert_msg)
+                        else:
+                            alert_msg = "⚡ HIGH QUALITY SETUP: " + msg
+                            st.warning(alert_msg)
 
-    if ticker not in st.session_state.alerted and now - last_time > cooldown:
+                        send_alert(alert_msg)
 
-        alert_msg = "🔥 EXTREME TRADE SETUP: " + msg if is_extreme else "⚡ HIGH QUALITY SETUP: " + msg
+                        st.session_state.alerted.add(ticker)
+                        st.session_state.last_alert[ticker] = now
 
-        st.warning(alert_msg)
-        send_alert(alert_msg)
+                elif signal == "BULLISH":
+                    st.success(msg)
 
-        st.session_state.alerted.add(ticker)
-        st.session_state.last_alert[ticker] = now
+                elif signal == "BEARISH":
+                    st.warning(msg)
 
-elif signal == "BULLISH":
-    st.success(msg)
+                else:
+                    st.info(msg)
 
-elif signal == "BEARISH":
-    st.warning(msg)
-
-else:
-    st.info(msg)
-
+            # -----------------------------
+            # TOP 10
+            # -----------------------------
             st.subheader("🏆 Top 10 Candidates")
 
             for r in results[:10]:
 
-                trade = r.get("trade_plan") or {}
-
                 st.write(
                     f"{r.get('ticker')} | {r.get('signal')} | "
                     f"${r.get('price')} | "
-                    f"RR {trade.get('rr', 0)} | "
-                    f"T1 {trade.get('target1', 0)}"
+                    f"Setup {r.get('setup_score', 0)} | "
+                    f"Squeeze {r.get('squeeze_score', 0)}"
                 )
 
         else:
