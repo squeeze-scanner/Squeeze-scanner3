@@ -2,6 +2,7 @@ import requests
 import time
 import html
 
+# ⚠️ your existing values kept as-is
 BOT_TOKEN = "8152536097:AAHyJsblgvVa5r2B12U-YeKt3-Z8O2dG_Kw"
 CHAT_ID = "7376511550"
 
@@ -15,10 +16,10 @@ _last_send_time = 0
 
 def send_alert(message, retry=2):
     """
-    Reliable Telegram sender:
-    - rate limited
+    Sends a Telegram message safely with:
+    - rate limiting
     - retries
-    - debug output
+    - HTML escaping
     """
 
     global _last_send_time
@@ -26,50 +27,54 @@ def send_alert(message, retry=2):
     if not message:
         return False
 
-    # -----------------------------
-    # RATE LIMIT (1 msg/sec)
-    # -----------------------------
-    now = time.time()
-    delay = now - _last_send_time
+    try:
+        # -----------------------------
+        # RATE LIMIT (1 msg/sec)
+        # -----------------------------
+        now = time.time()
+        delay = now - _last_send_time
 
-    if delay < 1.0:
-        time.sleep(1.0 - delay)
+        if delay < 1.0:
+            time.sleep(1.0 - delay)
 
-    _last_send_time = time.time()
+        _last_send_time = time.time()
 
-    # -----------------------------
-    # SAFE MESSAGE
-    # -----------------------------
-    safe_msg = html.escape(str(message))[:3500]
+        # -----------------------------
+        # SAFE MESSAGE FORMAT
+        # -----------------------------
+        safe_msg = html.escape(str(message))[:3500]
 
-    payload = {
-        "chat_id": CHAT_ID,
-        "text": safe_msg,
-        "parse_mode": "HTML"
-    }
+        payload = {
+            "chat_id": CHAT_ID,
+            "text": safe_msg,
+            "parse_mode": "HTML"
+        }
 
-    # -----------------------------
-    # RETRY LOGIC
-    # -----------------------------
-    for attempt in range(retry + 1):
+        # -----------------------------
+        # RETRY LOGIC
+        # -----------------------------
+        for attempt in range(retry + 1):
 
-        try:
-            res = requests.post(BASE_URL, data=payload, timeout=6)
+            try:
+                res = requests.post(BASE_URL, data=payload, timeout=6)
 
-            print("[TELEGRAM DEBUG]", res.status_code, res.text)
+                print("[TELEGRAM DEBUG]", res.status_code, res.text)
 
-            # Telegram success check (IMPORTANT FIX)
-            data = res.json()
+                if res.status_code == 200:
+                    data = res.json()
+                    if data.get("ok"):
+                        return True
 
-            if data.get("ok") is True:
-                return True
+            except requests.exceptions.Timeout:
+                print(f"[TELEGRAM TIMEOUT] attempt {attempt + 1}")
 
-        except requests.exceptions.Timeout:
-            print(f"[TELEGRAM TIMEOUT] attempt {attempt + 1}")
+            except Exception as e:
+                print(f"[TELEGRAM ERROR] attempt {attempt + 1}:", e)
 
-        except Exception as e:
-            print(f"[TELEGRAM ERROR] attempt {attempt + 1}: {e}")
+            time.sleep(1.5 * (attempt + 1))
 
-        time.sleep(1.5 * (attempt + 1))
+        return False
 
-    return False
+    except Exception as e:
+        print("[TELEGRAM FATAL ERROR]:", e)
+        return False
