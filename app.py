@@ -81,8 +81,8 @@ if start:
                 res = check_signal(t)
                 if res:
                     results.append(res)
-            except:
-                continue
+            except Exception as e:
+                print("[APP ERROR]", t, e)
 
         results.sort(key=lambda x: x.get("squeeze_score", 0), reverse=True)
 
@@ -114,10 +114,11 @@ if start:
                 squeeze = r.get("squeeze_score", 0)
                 bull = r.get("bull_prob", 0)
                 bear = r.get("bear_prob", 0)
-                rr = r.get("trade_plan", {}).get("rr", 0)
 
-                trade = r.get("trade_plan", {})
+                # 🔥 SAFE trade_plan access (CRITICAL FIX)
+                trade = r.get("trade_plan") or {}
 
+                rr = trade.get("rr", 0)
                 entry = trade.get("entry", (0, 0))
                 stop = trade.get("stop", 0)
                 t1 = trade.get("target1", 0)
@@ -134,10 +135,10 @@ if start:
                 last_time = st.session_state.last_alert.get(ticker, 0)
 
                 # -----------------------------
-                # UPDATED ALERT CONDITIONS (RR INCLUDED)
+                # SAFE ALERT CONDITIONS
                 # -----------------------------
-                is_high_quality = rr >= 1.5 and squeeze >= 60
-                is_extreme = rr >= 2.0 and bull >= 75
+                is_high_quality = rr and rr >= 1.5 and squeeze >= 60
+                is_extreme = rr and rr >= 2.0 and bull >= 75
 
                 is_alert = is_high_quality or is_extreme
 
@@ -168,7 +169,7 @@ if start:
 
             for r in results[:10]:
 
-                trade = r.get("trade_plan", {})
+                trade = r.get("trade_plan") or {}
 
                 st.write(
                     f"{r.get('ticker')} | {r.get('signal')} | "
