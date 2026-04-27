@@ -1,49 +1,34 @@
 import streamlit as st
-from engine import RadarEngine
+import time
+from engine_v19 import AutonomousScanner
 from telegram import send_alert
 
-st.title("🚀 Squeeze Radar V18 — Institutional Engine")
-
-tickers_input = st.text_input(
-    "Tickers",
-    "GME,AMC,TSLA,NVDA,BB,PLTR"
-)
-
-refresh_rate = st.slider("Engine Refresh (sec)", 2, 30, 5)
-start = st.toggle("Start Institutional Engine")
+st.title("🚀 V19 Autonomous Squeeze Scanner")
 
 # -----------------------------
 # STATE
 # -----------------------------
 if "engine" not in st.session_state:
-    st.session_state.engine = None
+    st.session_state.engine = AutonomousScanner()
+    st.session_state.engine.start(interval=10)
 
 if "last_signal" not in st.session_state:
     st.session_state.last_signal = {}
 
 placeholder = st.empty()
 
+engine = st.session_state.engine
+
 # -----------------------------
-# START ENGINE ONCE
+# UI LOOP
 # -----------------------------
-if start:
+while True:
 
-    tickers = [t.strip().upper() for t in tickers_input.split(",")]
+    results = engine.get()
 
-    if st.session_state.engine is None:
-        engine = RadarEngine(tickers)
-        engine.start(refresh_rate)
-        st.session_state.engine = engine
-
-    engine = st.session_state.engine
-    results = engine.get_data()
-
-    # -----------------------------
-    # UI RENDER
-    # -----------------------------
     with placeholder.container():
 
-        st.subheader("📊 Institutional Radar (V18)")
+        st.subheader("📊 Autonomous Market Radar")
 
         if results:
 
@@ -61,7 +46,7 @@ if start:
 
                 last = st.session_state.last_signal.get(ticker)
 
-                # ALERT ONLY ON STATE CHANGE
+                # alert only on change
                 if signal == "HIGH" and last != "HIGH":
                     st.error("🔥 " + msg)
                     send_alert("🔥 " + msg)
@@ -71,17 +56,16 @@ if start:
 
                 st.session_state.last_signal[ticker] = signal
 
-            st.subheader("Top 5 Signals")
+            st.subheader("Top 5 Movers")
 
             for r in results[:5]:
                 st.write(
                     f"{r['ticker']} → {r['signal']} | "
-                    f"${r['price']} | Score {r['score']} | "
-                    f"RSI {r['RSI']} | Vol {r['volume']}"
+                    f"${r['price']} | Score {r['score']}"
                 )
 
         else:
-            st.warning("Engine warming up...")
+            st.info("Scanning market automatically...")
 
-else:
-    st.info("Start the engine to begin scanning.")
+    time.sleep(5)
+    st.rerun()
