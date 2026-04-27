@@ -55,7 +55,7 @@ def breakout(close):
 
 
 # -----------------------------
-# TRADE ENGINE (FIXED)
+# TRADE ENGINE (FIXED V4)
 # -----------------------------
 def build_trade_plan(price, v, m, t, br):
 
@@ -64,16 +64,21 @@ def build_trade_plan(price, v, m, t, br):
     entry_low = round(price * (1 - 0.003), 2)
     entry_high = round(price * (1 + 0.003), 2)
 
-    stop = round(price * (1 - (0.015 + volatility * 0.4)), 2)
+    stop = round(price * (1 - (0.012 + volatility * 0.25)), 2)
 
-    risk = max(price - stop, price * 0.005)
+    # 🔥 FIX: ensure stop NEVER above price
+    stop = min(stop, price * 0.995)
+
+    risk = max(price - stop, price * 0.003)
 
     target1 = round(price + (risk * 1.5), 2)
     target2 = round(price + (risk * 2.5), 2)
 
     rr = round((target1 - price) / risk, 2)
 
+    # -----------------------------
     # STATE ENGINE
+    # -----------------------------
     if price < entry_low:
         state = "WATCHING"
     elif entry_low <= price <= entry_high:
@@ -81,7 +86,9 @@ def build_trade_plan(price, v, m, t, br):
     else:
         state = "IN_TREND"
 
+    # -----------------------------
     # TYPE
+    # -----------------------------
     if br and v > 1.3:
         setup_type = "BREAKOUT_SQUEEZE"
     elif m > 0.03:
@@ -163,36 +170,16 @@ def score_stock(ticker):
 
         trade_plan = build_trade_plan(price, v, m, t, br)
 
-        alerts = []
-
-        if setup > 0.75 and confidence > 0.15:
-            alerts.append("EXTREME_SETUP")
-
-        if setup > 0.60 and squeeze > 0.5:
-            alerts.append("STRONG_SETUP")
-
-        if trade_plan["state"] == "IN_TREND" and trade_plan["rr"] > 1.4:
-            alerts.append("TREND_BREAKOUT_READY")
-
-        score = (setup * 100 + squeeze * 60 + confidence * 80) / 3
-
         return {
             "ticker": ticker,
             "price": round(price, 2),
-
             "signal": signal,
-
             "bull_prob": round(bull * 100, 1),
             "bear_prob": round(bear * 100, 1),
             "confidence": round(confidence * 100, 1),
-
             "squeeze_score": round(squeeze * 100, 1),
             "setup_score": round(setup * 100, 1),
-
-            "score": round(score, 2),
-
-            "alerts": alerts,
-
+            "score": round((setup * 100 + squeeze * 60 + confidence * 80) / 3, 2),
             "trade_plan": trade_plan
         }
 
