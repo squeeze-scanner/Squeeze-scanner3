@@ -25,11 +25,13 @@ def send_alert(message, retry=2):
 
     try:
         # -----------------------------
-        # RATE LIMIT (1 msg/sec)
+        # RATE LIMIT (1 msg/sec safe)
         # -----------------------------
         now = time.time()
-        if now - _last_send_time < 1:
-            time.sleep(1)
+        elapsed = now - _last_send_time
+
+        if elapsed < 1.0:
+            time.sleep(1.0 - elapsed)
 
         _last_send_time = time.time()
 
@@ -53,10 +55,11 @@ def send_alert(message, retry=2):
 
                 print("[TELEGRAM DEBUG]", res.status_code, res.text)
 
-                # safer success check
+                # success check
                 if res.status_code == 200:
                     try:
-                        return res.json().get("ok", False)
+                        data = res.json()
+                        return bool(data.get("ok"))
                     except:
                         return True
 
