@@ -116,54 +116,55 @@ if start:
                 bear = r.get("bear_prob", 0)
 
                 # 🔥 SAFE trade_plan access (CRITICAL FIX)
-                trade = r.get("trade_plan") or {}
+   trade = r.get("trade_plan") or {}
 
-                rr = trade.get("rr", 0)
-                entry = trade.get("entry", (0, 0))
-                stop = trade.get("stop", 0)
-                t1 = trade.get("target1", 0)
-                t2 = trade.get("target2", 0)
-                setup_type = trade.get("type", "UNKNOWN")
+rr = trade.get("rr", 0)
+entry = trade.get("entry", (0, 0))
+stop = trade.get("stop", 0)
+t1 = trade.get("target1", 0)
+t2 = trade.get("target2", 0)
+setup_type = trade.get("type", "UNKNOWN")
 
-                msg = (
-                    f"{ticker} | {signal} | ${price}\n"
-                    f"Entry {entry} | Stop {stop}\n"
-                    f"T1 {t1} | T2 {t2} | RR {rr}\n"
-                    f"Bull {bull}% | Bear {bear}% | Squeeze {squeeze}%"
-                )
+msg = (
+    f"{ticker} | {signal} | ${price}\n"
+    f"Entry {entry} | Stop {stop}\n"
+    f"T1 {t1} | T2 {t2} | RR {rr}\n"
+    f"Bull {bull}% | Bear {bear}% | Squeeze {squeeze}%"
+)
 
-                last_time = st.session_state.last_alert.get(ticker, 0)
+last_time = st.session_state.last_alert.get(ticker, 0)
 
-                # -----------------------------
-                # SAFE ALERT CONDITIONS
-                # -----------------------------
-                is_high_quality = rr and rr >= 1.5 and squeeze >= 60
-                is_extreme = rr and rr >= 2.0 and bull >= 75
+# -----------------------------
+# SAFE ALERT CONDITIONS (FIXED)
+# -----------------------------
+is_high_quality = (rr is not None and rr >= 1.2 and squeeze >= 55)
+is_extreme = (rr is not None and rr >= 1.8 and bull >= 70)
 
-                is_alert = is_high_quality or is_extreme
+is_alert = is_high_quality or is_extreme
 
-                if is_alert:
+# DEBUG (temporary but IMPORTANT)
+st.write(f"DEBUG {ticker}: RR={rr} SQ={squeeze} BULL={bull}")
 
-                    if ticker not in st.session_state.alerted and now - last_time > cooldown:
+if is_alert:
 
-                        if is_extreme:
-                            st.error("🔥 EXTREME TRADE SETUP: " + msg)
-                            send_alert("🔥 EXTREME TRADE SETUP: " + msg)
-                        else:
-                            st.warning("⚡ HIGH QUALITY SETUP: " + msg)
-                            send_alert("⚡ HIGH QUALITY SETUP: " + msg)
+    if ticker not in st.session_state.alerted and now - last_time > cooldown:
 
-                        st.session_state.alerted.add(ticker)
-                        st.session_state.last_alert[ticker] = now
+        alert_msg = "🔥 EXTREME TRADE SETUP: " + msg if is_extreme else "⚡ HIGH QUALITY SETUP: " + msg
 
-                elif signal == "BULLISH":
-                    st.success(msg)
+        st.warning(alert_msg)
+        send_alert(alert_msg)
 
-                elif signal == "BEARISH":
-                    st.warning(msg)
+        st.session_state.alerted.add(ticker)
+        st.session_state.last_alert[ticker] = now
 
-                else:
-                    st.info(msg)
+elif signal == "BULLISH":
+    st.success(msg)
+
+elif signal == "BEARISH":
+    st.warning(msg)
+
+else:
+    st.info(msg)
 
             st.subheader("🏆 Top 10 Candidates")
 
