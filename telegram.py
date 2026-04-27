@@ -8,16 +8,16 @@ CHAT_ID = "7376511550"
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
 # -----------------------------
-# SIMPLE RATE LIMIT (PREVENT SPAM BLOCK)
+# RATE LIMIT STATE
 # -----------------------------
 _last_send_time = 0
 
 
 def send_alert(message, retry=2):
     """
-    Robust Telegram alert system:
+    Reliable Telegram sender:
     - rate limited
-    - retries on failure
+    - retries
     - safe formatting
     """
 
@@ -26,45 +26,52 @@ def send_alert(message, retry=2):
     if not message:
         return False
 
-    # -----------------------------
-    # RATE LIMIT (1 msg/sec safety)
-    # -----------------------------
-    now = time.time()
-    if now - _last_send_time < 1:
-        time.sleep(1)
+    try:
+        # -----------------------------
+        # RATE LIMIT (anti spam + API protection)
+        # -----------------------------
+        now = time.time()
+        delay = now - _last_send_time
 
-    _last_send_time = time.time()
+        if delay < 1.0:
+            time.sleep(1.0 - delay)
 
-    # -----------------------------
-    # SAFE MESSAGE HANDLING
-    # -----------------------------
-    safe_msg = html.escape(str(message))[:3500]
+        _last_send_time = time.time()
 
-    payload = {
-        "chat_id": CHAT_ID,
-        "text": safe_msg,
-        "parse_mode": "HTML"
-    }
+        # -----------------------------
+        # SAFE FORMAT (Telegram HTML safe)
+        # -----------------------------
+        safe_msg = html.escape(str(message))[:3500]
 
-    # -----------------------------
-    # SEND WITH RETRIES
-    # -----------------------------
-    for attempt in range(retry + 1):
+        payload = {
+            "chat_id": CHAT_ID,
+            "text": safe_msg,
+            "parse_mode": "HTML"
+        }
 
-        try:
-            res = requests.post(BASE_URL, data=payload, timeout=5)
+        # -----------------------------
+        # RETRY LOGIC
+        # -----------------------------
+        for attempt in range(retry + 1):
 
-            if res.status_code == 200:
-                return True
+            try:
+                res = requests.post(BASE_URL, data=payload, timeout=6)
 
-            print(f"Telegram error (attempt {attempt+1}):", res.text)
+                if res.status_code == 200:
+                    return True
 
-        except requests.exceptions.Timeout:
-            print(f"Telegram timeout (attempt {attempt+1})")
+                print(f"[Telegram Error] attempt {attempt+1}: {res.text}")
 
-        except Exception as e:
-            print(f"Telegram error (attempt {attempt+1}):", e)
+            except requests.exceptions.Timeout:
+                print(f"[Telegram Timeout] attempt {attempt+1}")
 
-        time.sleep(1.5 * (attempt + 1))
+            except Exception as e:
+                print(f"[Telegram Exception] attempt {attempt+1}: {e}")
 
-    return False
+            time.sleep(1.5 * (attempt + 1))
+
+        return False
+
+    except Exception as e:
+        print("[Telegram Fatal Error]:", e)
+        return False
