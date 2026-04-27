@@ -1,9 +1,10 @@
 import streamlit as st
 import time
+import numpy as np
 from scanner import check_signal
 from telegram import send_alert
 
-st.title("🚀 V23 Squeeze Radar (Stable Engine)")
+st.title("🚀 V23 Squeeze Radar (Stable Engine + Smart Alerts)")
 
 # -----------------------------
 # INPUTS
@@ -15,7 +16,6 @@ user_tickers = st.text_input(
 
 refresh_rate = st.slider("Refresh interval (seconds)", 5, 60, 15)
 start = st.toggle("🟢 Start Scanner")
-
 
 # -----------------------------
 # UNIVERSE
@@ -87,7 +87,7 @@ if start:
             except:
                 continue
 
-        # safe sort (prevents crash if missing keys)
+        # safe sort
         results.sort(key=lambda x: x.get("squeeze_score", 0), reverse=True)
 
         st.session_state.cache = results
@@ -107,7 +107,19 @@ if start:
 
             st.dataframe(results)
 
+            # -----------------------------
+            # SMART ALERT SYSTEM (NEW)
+            # -----------------------------
             st.subheader("🚨 Alerts")
+
+            # build dynamic ranking base
+            scores = [
+                r.get("squeeze_score", 0) + r.get("bull_prob", 0) / 2
+                for r in results
+            ] if results else []
+
+            top_10 = np.percentile(scores, 90) if scores else 0
+            top_5 = np.percentile(scores, 95) if scores else 0
 
             for r in results:
 
@@ -119,6 +131,8 @@ if start:
                 bull = r.get("bull_prob", 0)
                 bear = r.get("bear_prob", 0)
 
+                score = squeeze + bull / 2
+
                 msg = (
                     f"{ticker} | {signal} | ${price}\n"
                     f"Bull {bull}% | Bear {bear}% | Squeeze {squeeze}%"
@@ -127,20 +141,29 @@ if start:
                 last_time = st.session_state.last_alert.get(ticker, 0)
 
                 # -----------------------------
-                # ALERT CONDITION (CLEANED)
+                # SMART CONDITIONS
                 # -----------------------------
+                is_top10 = score >= top_10
+                is_extreme = score >= top_5
+
+                is_momentum_spike = bull >= 75 or bear >= 75
+                is_squeeze_event = squeeze >= 65
+
                 is_alert = (
-                    squeeze >= 50 or
-                    bull >= 70 or
-                    bear >= 70
+                    is_extreme or
+                    (is_top10 and (is_momentum_spike or is_squeeze_event))
                 )
 
                 if is_alert:
 
                     if ticker not in st.session_state.alerted and now - last_time > cooldown:
 
-                        st.error("🔥 " + msg)
-                        send_alert("🔥 " + msg)
+                        if is_extreme:
+                            st.error("🔥 EXTREME SETUP: " + msg)
+                            send_alert("🔥 EXTREME SETUP: " + msg)
+                        else:
+                            st.warning("⚡ STRONG SETUP: " + msg)
+                            send_alert("⚡ STRONG SETUP: " + msg)
 
                         st.session_state.alerted.add(ticker)
                         st.session_state.last_alert[ticker] = now
@@ -154,6 +177,9 @@ if start:
                 else:
                     st.info(msg)
 
+            # -----------------------------
+            # TOP 10
+            # -----------------------------
             st.subheader("🏆 Top 10 Candidates")
 
             for r in results[:10]:
