@@ -1,5 +1,13 @@
 import numpy as np
-import yfinance as yf
+
+# -----------------------------
+# SAFE IMPORT (CRITICAL FIX)
+# -----------------------------
+try:
+    import yfinance as yf
+except Exception as e:
+    print("[WARN] yfinance import failed:", e)
+    yf = None
 
 
 def arr(x):
@@ -55,7 +63,7 @@ def breakout(close):
 
 
 # -----------------------------
-# TRADE ENGINE (FIXED V4)
+# TRADE ENGINE
 # -----------------------------
 def build_trade_plan(price, v, m, t, br):
 
@@ -65,8 +73,6 @@ def build_trade_plan(price, v, m, t, br):
     entry_high = round(price * (1 + 0.003), 2)
 
     stop = round(price * (1 - (0.012 + volatility * 0.25)), 2)
-
-    # 🔥 FIX: ensure stop NEVER above price
     stop = min(stop, price * 0.995)
 
     risk = max(price - stop, price * 0.003)
@@ -76,9 +82,6 @@ def build_trade_plan(price, v, m, t, br):
 
     rr = round((target1 - price) / risk, 2)
 
-    # -----------------------------
-    # STATE ENGINE
-    # -----------------------------
     if price < entry_low:
         state = "WATCHING"
     elif entry_low <= price <= entry_high:
@@ -86,9 +89,6 @@ def build_trade_plan(price, v, m, t, br):
     else:
         state = "IN_TREND"
 
-    # -----------------------------
-    # TYPE
-    # -----------------------------
     if br and v > 1.3:
         setup_type = "BREAKOUT_SQUEEZE"
     elif m > 0.03:
@@ -110,14 +110,20 @@ def build_trade_plan(price, v, m, t, br):
 
 
 # -----------------------------
-# CORE ENGINE
+# CORE ENGINE (SAFE)
 # -----------------------------
 def score_stock(ticker):
 
     try:
+        if yf is None:
+            return None
+
         df = yf.Ticker(ticker).history(period="3mo")
 
         if df is None or df.empty or len(df) < 30:
+            return None
+
+        if "Close" not in df or "Volume" not in df:
             return None
 
         close = df["Close"].values
@@ -130,9 +136,6 @@ def score_stock(ticker):
         t = trend_strength(close)
         br = breakout(close)
 
-        # -----------------------------
-        # TREND DIRECTION (NEW CORE FIX)
-        # -----------------------------
         trend_bias = (m * 1.2) + (t * 1.0)
 
         if r > 65:
@@ -140,7 +143,6 @@ def score_stock(ticker):
         if r < 35:
             trend_bias += 0.5
 
-        # FINAL DIRECTION
         if trend_bias > 0.15:
             direction = "BULLISH"
         elif trend_bias < -0.15:
@@ -148,13 +150,9 @@ def score_stock(ticker):
         else:
             direction = "NEUTRAL"
 
-        # -----------------------------
-        # BULL / BEAR MODEL (CLEANED)
-        # -----------------------------
         bull = 0.5
         bear = 0.5
 
-        # ONLY allow breakout to help direction, not override it
         if br:
             if direction == "BULLISH":
                 bull += 0.15
@@ -179,9 +177,6 @@ def score_stock(ticker):
 
         confidence = abs(bull - bear)
 
-        # -----------------------------
-        # SIGNAL (NOW DIRECTIONAL)
-        # -----------------------------
         if direction == "BULLISH" and bull > 0.58:
             signal = "BULLISH"
         elif direction == "BEARISH" and bear > 0.58:
@@ -189,26 +184,16 @@ def score_stock(ticker):
         else:
             signal = "NEUTRAL"
 
-        # -----------------------------
-        # SETUP SCORE (UNCHANGED LOGIC)
-        # -----------------------------
         setup = min(v * 0.3 + abs(m) + abs(t) + (1 if br else 0), 1.0)
-
         squeeze = min((v * 0.3 + (1 if br else 0) + abs(m) + abs(t)) / 3, 1.0)
 
         trade_plan = build_trade_plan(price, v, m, t, br)
 
         alerts = []
 
-        # -----------------------------
-        # EXTREME ONLY IF DIRECTION AGREES
-        # -----------------------------
         if setup > 0.75 and confidence > 0.15:
-
-            if direction == "BULLISH" and signal == "BULLISH":
-                alerts.append("EXTREME_BULL")
-            elif direction == "BEARISH" and signal == "BEARISH":
-                alerts.append("EXTREME_BEAR")
+            if direction == signal:
+                alerts.append(f"EXTREME_{direction}")
 
         if setup > 0.60 and squeeze > 0.5:
             alerts.append("STRONG_SETUP")
@@ -221,19 +206,14 @@ def score_stock(ticker):
         return {
             "ticker": ticker,
             "price": round(price, 2),
-
             "signal": signal,
-            "direction": direction,   # 🔥 NEW FIELD
-
+            "direction": direction,
             "bull_prob": round(bull * 100, 1),
             "bear_prob": round(bear * 100, 1),
             "confidence": round(confidence * 100, 1),
-
             "squeeze_score": round(squeeze * 100, 1),
             "setup_score": round(setup * 100, 1),
-
             "score": round(score, 2),
-
             "alerts": alerts,
             "trade_plan": trade_plan
         }
@@ -241,3 +221,7 @@ def score_stock(ticker):
     except Exception as e:
         print("[scanner error]", ticker, e)
         return None
+
+
+def check_signal(ticker):
+    return score_stock(ticker)
