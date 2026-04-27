@@ -3,7 +3,7 @@ import time
 from scanner import check_signal
 from telegram import send_alert
 
-st.title("🚀 V3.1 Execution Engine (STABLE FIX)")
+st.title("🚀 V3.2 Execution Engine (FIXED STATE)")
 
 # -----------------------------
 # INPUTS
@@ -35,7 +35,7 @@ def merge_universe(user_input):
     return list(set(universe))
 
 # -----------------------------
-# STATE (FIXED - NO MORE CRASH)
+# STATE
 # -----------------------------
 if "cache" not in st.session_state:
     st.session_state.cache = []
@@ -57,7 +57,7 @@ if start:
     now = time.time()
 
     # -----------------------------
-    # SAFE SCAN LOOP
+    # SCAN
     # -----------------------------
     if now - st.session_state.last_run >= refresh_rate:
 
@@ -102,9 +102,13 @@ if start:
             setup = r.get("setup_score", 0)
             squeeze = r.get("squeeze_score", 0)
 
-            trade = r.get("trade") or {}
+            # ✅ FIXED KEY HERE
+            trade = r.get("trade_plan", {})
 
-            entry_low, entry_high = trade.get("entry", (0, 0))
+            entry = trade.get("entry", (0, 0))
+            entry_low = entry[0]
+            entry_high = entry[1]
+
             stop = trade.get("stop", 0)
             t1 = trade.get("target1", 0)
             t2 = trade.get("target2", 0)
@@ -120,10 +124,10 @@ if start:
             last_time = st.session_state.last_alert.get(ticker, 0)
 
             # -----------------------------
-            # FIXED ALERT LOGIC
+            # CLEAN ALERT LOGIC
             # -----------------------------
             is_entry = entry_low <= price <= entry_high
-            is_breakout = price > entry_high
+            is_breakout = price > entry_high and entry_high > 0
 
             is_strong = setup >= 60 and squeeze >= 50
             is_extreme = setup >= 80 and rr >= 1.3
@@ -134,40 +138,36 @@ if start:
                 is_breakout
             )
 
-            # DEBUG (VERY IMPORTANT)
+            # DEBUG
             st.write(
                 ticker,
-                "| extreme:", is_extreme,
-                "| strong:", is_strong,
                 "| entry:", is_entry,
                 "| breakout:", is_breakout,
+                "| extreme:", is_extreme,
                 "| alert:", should_alert
             )
 
             # -----------------------------
-            # ALERT EXECUTION
+            # ALERT
             # -----------------------------
             if should_alert and now - last_time > cooldown:
 
                 if is_extreme:
                     alert_msg = "🔥 EXTREME SETUP: " + msg
                     st.error(alert_msg)
+
                 elif is_breakout:
                     alert_msg = "🚀 BREAKOUT ALERT: " + msg
                     st.warning(alert_msg)
+
                 else:
                     alert_msg = "⚡ ENTRY ALERT: " + msg
                     st.success(alert_msg)
 
-                # Telegram call (VISIBLE RESULT)
-                result = send_alert(alert_msg)
-                st.write("📡 TELEGRAM RESULT:", result)
+                send_alert(alert_msg)
 
                 st.session_state.last_alert[ticker] = now
 
-            # -----------------------------
-            # DISPLAY
-            # -----------------------------
             st.info(msg)
 
         # -----------------------------
@@ -176,8 +176,7 @@ if start:
         st.subheader("🏆 Top 10")
 
         for r in results[:10]:
-            trade = r.get("trade") or {}
+            trade = r.get("trade_plan", {})
             st.write(
-                f"{r['ticker']} | ${r['price']} | "
-                f"RR {trade.get('rr', 0)}"
+                f"{r['ticker']} | ${r['price']} | RR {trade.get('rr', 0)}"
             )
