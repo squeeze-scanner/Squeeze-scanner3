@@ -1,0 +1,14 @@
+def check_signal(ticker):
+
+    fast = fast_filter(ticker)
+
+    # ignore dead stocks early
+    if not fast:
+        return None
+
+    # only continue if ticker shows activity
+    if fast["fast_score"] < 2:
+        return None
+
+    # NOW run your full model ONLY on active stocks
+    return score_stock(yf.Ticker(ticker))
