@@ -1,167 +1,146 @@
-import numpy as np
-import yfinance as yf
+import streamlit as st
+import time
+from scanner import check_signal
+from telegram import send_alert
+
+st.title("🚀 V23 Squeeze Radar (Fixed Engine)")
+
+user_tickers = st.text_input(
+    "➕ Add extra tickers (comma separated)",
+    "GME,AMC,TSLA"
+)
+
+refresh_rate = st.slider("Refresh interval (seconds)", 5, 60, 15)
+start = st.toggle("🟢 Start Scanner")
 
 
-def arr(x):
-    return np.array(x).reshape(-1)
+def get_full_universe():
+    base = [
+        "AAPL","MSFT","NVDA","AMZN","META","GOOGL","TSLA","JPM",
+        "V","XOM","PG","MA","HD","CVX","PEP","KO","WMT","BAC"
+    ]
+
+    momentum = [
+        "PLTR","GME","AMC","BB","NIO","SOFI","RIVN","LCID",
+        "AMD","INTC","PYPL","UBER","SQ","SHOP","BABA"
+    ]
+
+    return list(set(base + momentum))
 
 
-# -----------------------------
-# INDICATORS (SAFE)
-# -----------------------------
-def rsi(close):
-    c = arr(close)
-    if len(c) < 15:
-        return 50
+def merge_universe(user_input):
+    universe = get_full_universe()
 
-    delta = np.diff(c)
-    gain = np.where(delta > 0, delta, 0)
-    loss = np.where(delta < 0, -delta, 0)
+    if user_input:
+        manual = [t.strip().upper() for t in user_input.split(",") if t.strip()]
+        universe.extend(manual)
 
-    avg_gain = np.mean(gain[-14:])
-    avg_loss = np.mean(loss[-14:]) + 1e-9
-
-    rs = avg_gain / avg_loss
-    return 100 - (100 / (1 + rs))
+    return list(set(universe))
 
 
-def volume_intensity(volume):
-    v = arr(volume)
-    if len(v) < 20:
-        return 1.0
-    return v[-1] / (np.mean(v[-20:]) + 1e-9)
+if "cache" not in st.session_state:
+    st.session_state.cache = []
+
+if "last_run" not in st.session_state:
+    st.session_state.last_run = 0
+
+if "last_alert" not in st.session_state:
+    st.session_state.last_alert = {}
+
+if "alerted" not in st.session_state:
+    st.session_state.alerted = set()
+
+cooldown = 600
+placeholder = st.empty()
 
 
-def momentum(close):
-    c = arr(close)
-    if len(c) < 20:
-        return 0.0
-    base = c[-10] if c[-10] != 0 else 1e-9
-    return (c[-1] / base) - 1
+if start:
 
+    now = time.time()
 
-def trend_strength(close):
-    c = arr(close)
-    if len(c) < 30:
-        return 0.0
-    return (np.mean(c[-10:]) / (np.mean(c[-30:]) + 1e-9)) - 1
+    if now - st.session_state.last_run >= refresh_rate:
 
+        tickers = merge_universe(user_tickers)[:120]
 
-def breakout(close):
-    c = arr(close)
-    if len(c) < 20:
-        return False
-    return c[-1] > np.max(c[-20:-1])
+        results = []
 
+        for t in tickers:
+            try:
+                res = check_signal(t)
+                if res:
+                    results.append(res)
+            except:
+                continue
 
-# -----------------------------
-# CORE SCORING
-# -----------------------------
-def score_stock(ticker):
+        # sort by squeeze strength (REAL metric)
+        results.sort(key=lambda x: x.get("squeeze_score", 0), reverse=True)
 
-    try:
-        df = yf.Ticker(ticker).history(period="3mo")
+        st.session_state.cache = results
+        st.session_state.last_run = now
 
-        if df is None or df.empty or len(df) < 30:
-            return None
+    results = st.session_state.cache
 
-        # protect missing volume
-        if "Volume" not in df.columns:
-            return None
+    with placeholder.container():
 
-        close = df["Close"].values
-        volume = df["Volume"].values
-        price = float(df["Close"].iloc[-1])
+        st.subheader("📊 Market Radar")
+        st.write(f"Active tickers: {len(results)}")
 
-        r = rsi(close)
-        v = volume_intensity(volume)
-        m = momentum(close)
-        t = trend_strength(close)
-        br = breakout(close)
+        if results:
 
-        # -----------------------------
-        # BULL / BEAR MODEL
-        # -----------------------------
-        bull = 0.5
-        bear = 0.5
+            st.dataframe(results)
 
-        if r < 35:
-            bull += 0.15
-        elif r > 65:
-            bear += 0.15
+            st.subheader("🚨 Alerts")
 
-        bull += max(0, m * 0.6)
-        bear += max(0, -m * 0.6)
+            for r in results:
 
-        bull += max(0, t * 0.5)
-        bear += max(0, -t * 0.5)
+                ticker = r.get("ticker")
+                signal = r.get("signal")
+                price = r.get("price")
+                squeeze = r.get("squeeze_score", 0)
+                bull = r.get("bull_prob", 0)
+                bear = r.get("bear_prob", 0)
 
-        if v > 1.3:
-            bull += 0.1
+                msg = (
+                    f"{ticker} | {signal} | ${price}\n"
+                    f"Bull {bull}% | Bear {bear}% | Squeeze {squeeze}%"
+                )
 
-        if br:
-            bull += 0.15
+                last_time = st.session_state.last_alert.get(ticker, 0)
 
-        total = bull + bear
-        bull /= total
-        bear /= total
+                # FIXED ALERT LOGIC
+                is_alert = (
+                    squeeze >= 50 or
+                    bull >= 70 or
+                    bear >= 70
+                )
 
-        confidence = abs(bull - bear)
+                if is_alert:
 
-        # -----------------------------
-        # SIGNAL
-        # -----------------------------
-        if bull > 0.60:
-            signal = "BULLISH"
-        elif bear > 0.60:
-            signal = "BEARISH"
+                    if ticker not in st.session_state.alerted and now - last_time > cooldown:
+
+                        st.error("🔥 " + msg)
+                        send_alert("🔥 " + msg)
+
+                        st.session_state.alerted.add(ticker)
+                        st.session_state.last_alert[ticker] = now
+
+                elif signal == "BULLISH":
+                    st.success(msg)
+
+                elif signal == "BEARISH":
+                    st.warning(msg)
+
+                else:
+                    st.info(msg)
+
+            st.subheader("🏆 Top 10")
+
+            for r in results[:10]:
+                st.write(
+                    f"{r.get('ticker')} | {r.get('signal')} | "
+                    f"${r.get('price')} | Squeeze {r.get('squeeze_score')}%"
+                )
         else:
-            signal = "NEUTRAL"
+            st.info("Scanning...")
 
-        # -----------------------------
-        # SQUEEZE (STABLE FORMULA)
-        # -----------------------------
-        squeeze = (
-            (v * 0.35) +
-            (1.0 if br else 0.0) +
-            abs(m) +
-            abs(t)
-        ) / 3
-
-        squeeze = min(squeeze, 1.0)
-
-        # -----------------------------
-        # ALERTS (MATCH APP)
-        # -----------------------------
-        alerts = []
-
-        if bull > 0.70 and confidence > 0.15:
-            alerts.append("HIGH_BULL_CONFIDENCE")
-
-        if bear > 0.70 and confidence > 0.15:
-            alerts.append("HIGH_BEAR_CONFIDENCE")
-
-        if squeeze > 0.5:
-            alerts.append("HIGH_SQUEEZE_POTENTIAL")
-
-        return {
-            "ticker": ticker,
-            "price": round(price, 2),
-
-            "signal": signal,
-            "bull_prob": round(bull * 100, 1),
-            "bear_prob": round(bear * 100, 1),
-            "confidence": round(confidence * 100, 1),
-
-            "squeeze_score": round(squeeze * 100, 1),
-
-            "alerts": alerts
-        }
-
-    except Exception as e:
-        print(f"[scanner error {ticker}]:", e)
-        return None
-
-
-def check_signal(ticker):
-    return score_stock(ticker)
+    # IMPORTANT FIX: removed st.rerun()
