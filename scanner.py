@@ -8,6 +8,9 @@ def arr(x):
     return np.array(x).reshape(-1)
 
 
+# -----------------------------
+# FAST FILTER
+# -----------------------------
 def fast_filter(df):
     try:
         if df is None or df.empty or len(df) < 2:
@@ -17,6 +20,7 @@ def fast_filter(df):
         volume = df["Volume"].values
 
         price_change = (close[-1] / close[-2]) - 1 if close[-2] != 0 else 0
+
         vol_avg = np.mean(volume[-20:]) if len(volume) >= 20 else np.mean(volume)
         vol_ratio = volume[-1] / vol_avg if vol_avg != 0 else 1
 
@@ -79,22 +83,23 @@ def breakout(close):
 
 
 # -----------------------------
-# SQUEEZE ENGINE
+# SQUEEZE ENGINE (REALISTIC FIX)
 # -----------------------------
 def squeeze_score(v, vol, br, m, t):
     score = 0.0
 
-    if v > 1.3:
-        score += 0.3
-    elif v > 1.1:
+    if v > 1.5:
+        score += 0.35
+    elif v > 1.2:
         score += 0.2
 
-    score += min(vol * 0.5, 0.3)
+    score += min(vol * 0.4, 0.3)
+
     if br:
         score += 0.25
 
-    score += max(0, m * 0.3)
-    score += max(0, t * 0.3)
+    score += max(0, m * 0.25)
+    score += max(0, t * 0.25)
 
     return min(score, 1.0)
 
@@ -105,8 +110,7 @@ def squeeze_score(v, vol, br, m, t):
 def score_stock(ticker):
 
     try:
-        stock = yf.Ticker(ticker)
-        df = stock.history(period="3mo")
+        df = yf.Ticker(ticker).history(period="3mo")
 
         if df is None or df.empty or len(df) < 30:
             return None
@@ -127,7 +131,7 @@ def score_stock(ticker):
         squeeze = squeeze_score(v, 0.2, br, m, t)
 
         # -----------------------------
-        # BULL / BEAR MODEL (STRONGER SEPARATION FIX)
+        # BULL / BEAR MODEL (FIXED SEPARATION)
         # -----------------------------
         bull = 0.5
         bear = 0.5
@@ -137,11 +141,11 @@ def score_stock(ticker):
         elif r > 65:
             bear += 0.15
 
-        bull += max(0, m * 0.6)
-        bear += max(0, -m * 0.6)
+        bull += max(0, m * 0.55)
+        bear += max(0, -m * 0.55)
 
-        bull += max(0, t * 0.5)
-        bear += max(0, -t * 0.5)
+        bull += max(0, t * 0.45)
+        bear += max(0, -t * 0.45)
 
         if v > 1.3:
             bull += 0.1
@@ -156,28 +160,28 @@ def score_stock(ticker):
         confidence = abs(bull - bear)
 
         # -----------------------------
-        # SIGNAL FIX (IMPORTANT)
+        # SIGNAL (FIXED THRESHOLDS)
         # -----------------------------
-        if bull > 0.58:
+        if bull - bear > 0.08:
             signal = "BULLISH"
-        elif bear > 0.58:
+        elif bear - bull > 0.08:
             signal = "BEARISH"
         else:
             signal = "NEUTRAL"
 
         # -----------------------------
-        # ALERTS (CLEAR LABELS)
+        # ALERTS (STANDARDIZED FOR APP)
         # -----------------------------
         alerts = []
 
         if bull >= 0.68:
-            alerts.append("BULL_CONFIDENCE")
+            alerts.append("HIGH_BULL_CONFIDENCE")
 
         if bear >= 0.68:
-            alerts.append("BEAR_CONFIDENCE")
+            alerts.append("HIGH_BEAR_CONFIDENCE")
 
-        if squeeze >= 0.45:
-            alerts.append("SQUEEZE")
+        if squeeze >= 0.5:
+            alerts.append("HIGH_SQUEEZE_POTENTIAL")
 
         return {
             "ticker": ticker,
