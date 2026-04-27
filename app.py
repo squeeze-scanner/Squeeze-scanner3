@@ -21,8 +21,9 @@ scan_size = st.slider("📊 Max tickers to scan", 10, 150, 50)
 start = st.toggle("🟢 Start Scanner")
 
 # -----------------------------
-# UNIVERSE
+# CACHE UNIVERSE (IMPORTANT FIX)
 # -----------------------------
+@st.cache_data(ttl=300)
 def get_full_universe():
     base = [
         "AAPL","MSFT","NVDA","AMZN","META","GOOGL","GOOG","TSLA","BRK-B","JPM",
@@ -67,6 +68,7 @@ if "alerted" not in st.session_state:
 placeholder = st.empty()
 cooldown = 600
 
+
 # -----------------------------
 # MAIN ENGINE
 # -----------------------------
@@ -74,9 +76,13 @@ if start:
 
     now = time.time()
 
+    # only scan when interval passes
     if now - st.session_state.last_run >= refresh_rate:
 
-        tickers = merge_universe(user_tickers)[:scan_size]
+        universe = merge_universe(user_tickers)
+
+        # IMPORTANT: limit BEFORE scanning
+        tickers = universe[:scan_size]
 
         results = []
 
@@ -88,6 +94,7 @@ if start:
             except:
                 continue
 
+        # sort safely
         results.sort(key=lambda x: x.get("score", 0), reverse=True)
 
         st.session_state.cache = results
@@ -113,11 +120,10 @@ if start:
 
             for r in results:
 
-                ticker = r.get("ticker")
-                signal = r.get("signal")
-                score = r.get("score")
-                price = r.get("price")
-
+                ticker = r.get("ticker", "N/A")
+                signal = r.get("signal", "LOW")
+                score = r.get("score", 0)
+                price = r.get("price", "N/A")
                 squeeze = r.get("squeeze_pressure", 0)
 
                 msg = (
@@ -127,6 +133,9 @@ if start:
 
                 last_time = st.session_state.last_alert.get(ticker, 0)
 
+                # -----------------------------
+                # ALERT LOGIC
+                # -----------------------------
                 if signal == "HIGH":
 
                     if ticker not in st.session_state.alerted and now - last_time > cooldown:
@@ -139,9 +148,9 @@ if start:
                 elif signal == "MED":
                     st.warning("⚠️ " + msg)
 
-                else:
-                    st.info(msg)
-
+            # -----------------------------
+            # TOP 10
+            # -----------------------------
             st.subheader("🏆 Top 10 Candidates")
 
             for r in results[:10]:
@@ -152,7 +161,8 @@ if start:
                 )
 
         else:
-            st.warning("No signals detected")
+            st.warning("No signals detected yet")
 
-    time.sleep(1)
+    # IMPORTANT: prevents CPU spam but keeps UI alive
+    time.sleep(0.5)
     st.rerun()
