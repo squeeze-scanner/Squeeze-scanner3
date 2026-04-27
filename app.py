@@ -1,75 +1,55 @@
 import streamlit as st
-import time
-from scanner import check_signal
+from engine import RadarEngine
 from telegram import send_alert
 
-st.title("🚀 Squeeze Radar V17 (Engine Core)")
+st.title("🚀 Squeeze Radar V18 — Institutional Engine")
 
 tickers_input = st.text_input(
     "Tickers",
     "GME,AMC,TSLA,NVDA,BB,PLTR"
 )
 
-refresh_rate = st.slider("Scan Interval (sec)", 5, 60, 10)
-start = st.toggle("Start Engine")
+refresh_rate = st.slider("Engine Refresh (sec)", 2, 30, 5)
+start = st.toggle("Start Institutional Engine")
 
 # -----------------------------
 # STATE
 # -----------------------------
-if "cache" not in st.session_state:
-    st.session_state.cache = []
+if "engine" not in st.session_state:
+    st.session_state.engine = None
 
 if "last_signal" not in st.session_state:
     st.session_state.last_signal = {}
 
-if "last_alert" not in st.session_state:
-    st.session_state.last_alert = {}
-
-if "last_scan" not in st.session_state:
-    st.session_state.last_scan = 0
-
 placeholder = st.empty()
 
 # -----------------------------
-# ENGINE LOOP (CONTROLLED)
+# START ENGINE ONCE
 # -----------------------------
 if start:
 
-    now = time.time()
-
     tickers = [t.strip().upper() for t in tickers_input.split(",")]
 
-    # -----------------------------
-    # SCAN ONLY WHEN DUE
-    # -----------------------------
-    if now - st.session_state.last_scan >= refresh_rate:
+    if st.session_state.engine is None:
+        engine = RadarEngine(tickers)
+        engine.start(refresh_rate)
+        st.session_state.engine = engine
 
-        results = []
-
-        for t in tickers:
-            res = check_signal(t)
-            if res:
-                results.append(res)
-
-        results.sort(key=lambda x: x["score"], reverse=True)
-
-        st.session_state.cache = results
-        st.session_state.last_scan = now
-
-    results = st.session_state.cache
+    engine = st.session_state.engine
+    results = engine.get_data()
 
     # -----------------------------
-    # RENDER
+    # UI RENDER
     # -----------------------------
     with placeholder.container():
 
-        st.subheader("📊 Live Radar V17")
+        st.subheader("📊 Institutional Radar (V18)")
 
         if results:
 
             st.dataframe(results)
 
-            st.subheader("🚨 Alerts")
+            st.subheader("🚨 Live Signals")
 
             for r in results:
 
@@ -81,7 +61,7 @@ if start:
 
                 last = st.session_state.last_signal.get(ticker)
 
-                # ONLY ON CHANGE
+                # ALERT ONLY ON STATE CHANGE
                 if signal == "HIGH" and last != "HIGH":
                     st.error("🔥 " + msg)
                     send_alert("🔥 " + msg)
@@ -91,7 +71,7 @@ if start:
 
                 st.session_state.last_signal[ticker] = signal
 
-            st.subheader("Top 5")
+            st.subheader("Top 5 Signals")
 
             for r in results[:5]:
                 st.write(
@@ -101,7 +81,7 @@ if start:
                 )
 
         else:
-            st.warning("No data")
+            st.warning("Engine warming up...")
 
-    time.sleep(1)
-    st.rerun()
+else:
+    st.info("Start the engine to begin scanning.")
