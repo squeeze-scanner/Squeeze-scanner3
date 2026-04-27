@@ -7,7 +7,7 @@ def arr(x):
 
 
 # -----------------------------
-# INDICATORS (CLEANED + STABLE)
+# INDICATORS (SAFE)
 # -----------------------------
 def rsi(close):
     c = arr(close)
@@ -55,37 +55,45 @@ def breakout(close):
 
 
 # -----------------------------
-# SQUEEZE + SETUP ENGINE (NEW)
+# TRADE ENGINE (STEP 1 FIXED)
 # -----------------------------
-def setup_quality(v, m, t, br, r):
+def build_trade_plan(price, v, m, t, br):
 
-    score = 0.0
+    volatility = (abs(m) + abs(t) + 0.01)
 
-    # volume expansion
-    if v > 1.5:
-        score += 0.30
-    elif v > 1.2:
-        score += 0.20
+    entry_low = price * (1 - 0.003)
+    entry_high = price * (1 + 0.003)
 
-    # momentum confirmation
-    score += min(abs(m) * 0.4, 0.25)
+    stop = price - (price * (0.015 + volatility * 0.5))
 
-    # trend alignment
-    score += min(abs(t) * 0.4, 0.25)
+    risk = price - stop if price > stop else 0.01
 
-    # breakout confirmation
-    if br:
-        score += 0.20
+    target1 = price + (risk * 1.5)
+    target2 = price + (risk * 2.5)
 
-    # RSI edge (oversold / overbought extremes)
-    if r < 30 or r > 70:
-        score += 0.10
+    rr = (target1 - price) / risk if risk != 0 else 0
 
-    return min(score, 1.0)
+    if br and v > 1.3:
+        setup_type = "BREAKOUT_SQUEEZE"
+    elif m > 0.03:
+        setup_type = "MOMENTUM"
+    elif t > 0.02:
+        setup_type = "TREND_CONTINUATION"
+    else:
+        setup_type = "REVERSAL"
+
+    return {
+        "entry": (round(entry_low, 2), round(entry_high, 2)),
+        "stop": round(stop, 2),
+        "target1": round(target1, 2),
+        "target2": round(target2, 2),
+        "rr": round(rr, 2),
+        "type": setup_type
+    }
 
 
 # -----------------------------
-# CORE SCORING ENGINE
+# CORE SCORING
 # -----------------------------
 def score_stock(ticker):
 
@@ -102,7 +110,6 @@ def score_stock(ticker):
         volume = df["Volume"].values
         price = float(df["Close"].iloc[-1])
 
-        # indicators
         r = rsi(close)
         v = volume_intensity(volume)
         m = momentum(close)
@@ -110,7 +117,7 @@ def score_stock(ticker):
         br = breakout(close)
 
         # -----------------------------
-        # BULL / BEAR MODEL (IMPROVED BALANCE)
+        # BULL / BEAR MODEL
         # -----------------------------
         bull = 0.5
         bear = 0.5
@@ -139,7 +146,7 @@ def score_stock(ticker):
         confidence = abs(bull - bear)
 
         # -----------------------------
-        # SIGNAL (CLEAN THRESHOLDING)
+        # SIGNAL
         # -----------------------------
         if bull > 0.62:
             signal = "BULLISH"
@@ -149,11 +156,10 @@ def score_stock(ticker):
             signal = "NEUTRAL"
 
         # -----------------------------
-        # NEW: SETUP QUALITY SCORE
+        # SETUP + SQUEEZE
         # -----------------------------
-        setup = setup_quality(v, m, t, br, r)
+        setup = min(v * 0.3 + abs(m) + abs(t) + (1 if br else 0), 1.0)
 
-        # squeeze is now REALISTIC (not inflated)
         squeeze = (
             v * 0.3 +
             (1.0 if br else 0.0) +
@@ -164,7 +170,12 @@ def score_stock(ticker):
         squeeze = min(squeeze, 1.0)
 
         # -----------------------------
-        # ALERTS (BETTER FILTERING)
+        # TRADE PLAN (🔥 FIXED INTEGRATION)
+        # -----------------------------
+        trade = build_trade_plan(price, v, m, t, br)
+
+        # -----------------------------
+        # ALERTS
         # -----------------------------
         alerts = []
 
@@ -181,13 +192,9 @@ def score_stock(ticker):
             alerts.append("BEARISH_PRESSURE")
 
         # -----------------------------
-        # FINAL SCORE (IMPORTANT UPGRADE)
+        # FINAL SCORE
         # -----------------------------
-        score = (
-            setup * 100 +
-            squeeze * 60 +
-            confidence * 80
-        ) / 3
+        score = (setup * 100 + squeeze * 60 + confidence * 80) / 3
 
         return {
             "ticker": ticker,
@@ -204,55 +211,14 @@ def score_stock(ticker):
 
             "score": round(score, 2),
 
-            "alerts": alerts
+            "alerts": alerts,
+
+            # 🔥 NEW: FULL TRADE ENGINE OUTPUT
+            "trade": trade
         }
-# -----------------------------
-# TRADE SETUP ENGINE
-# -----------------------------
-def build_trade_plan(price, v, m, t, br):
-    """
-    Creates structured trade levels:
-    entry, stop, targets, RR
-    """
 
-    # simple volatility proxy (stable, no extra libs)
-    volatility = (abs(m) + abs(t) + 0.01)
-
-    # entry zone (small breakout zone)
-    entry_low = price * (1 - 0.003)
-    entry_high = price * (1 + 0.003)
-
-    # stop loss (below structure)
-    stop = price - (price * (0.015 + volatility * 0.5))
-
-    # targets (based on risk)
-    risk = price - stop
-
-    target1 = price + (risk * 1.5)
-    target2 = price + (risk * 2.5)
-
-    rr = (target1 - price) / risk if risk != 0 else 0
-
-    # setup classification
-    if br and v > 1.3:
-        setup_type = "BREAKOUT_SQUEEZE"
-    elif m > 0.03:
-        setup_type = "MOMENTUM"
-    elif t > 0.02:
-        setup_type = "TREND_CONTINUATION"
-    else:
-        setup_type = "REVERSAL"
-
-    return {
-        "entry": (round(entry_low, 2), round(entry_high, 2)),
-        "stop": round(stop, 2),
-        "target1": round(target1, 2),
-        "target2": round(target2, 2),
-        "rr": round(rr, 2),
-        "type": setup_type
-    }
     except Exception as e:
-        print(f"[scanner error {ticker}]:", e)
+        print(f"[scanner error {ticker}]: {e}")
         return None
 
 
