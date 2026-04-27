@@ -3,7 +3,7 @@ import time
 from scanner import check_signal
 from telegram import send_alert
 
-st.title("🚀 V3 Execution Engine (FIXED ALERT SYSTEM)")
+st.title("🚀 V3.1 Execution Engine (DEBUG + FIXED ALERTS)")
 
 # -----------------------------
 # INPUTS
@@ -40,13 +40,10 @@ def merge_universe(user_input):
 if "cache" not in st.session_state:
     st.session_state.cache = []
 
-if "last_run" not in st.session_state:
-    st.session_state.last_run = 0
-
 if "last_alert" not in st.session_state:
     st.session_state.last_alert = {}
 
-cooldown = 180  # shorter so you actually see alerts
+cooldown = 120  # lower so you actually see alerts
 placeholder = st.empty()
 
 # -----------------------------
@@ -92,7 +89,7 @@ if start:
 
         st.dataframe(results)
 
-        st.subheader("🚀 V3 LIVE EXECUTION SIGNALS")
+        st.subheader("🚀 V3.1 LIVE ALERT ENGINE")
 
         for r in results:
 
@@ -108,11 +105,25 @@ if start:
             t1 = trade.get("target1", 0)
             t2 = trade.get("target2", 0)
             rr = trade.get("rr", 0)
-            state = trade.get("state", "WAITING")
+
+            # -----------------------------
+            # SAFE STATE DERIVATION (FIXED)
+            # -----------------------------
+            is_entry_zone = entry_low <= price <= entry_high
+            is_breakout = price > entry_high
+
+            is_strong = setup >= 60 and squeeze >= 50
+            is_extreme = setup >= 80 and rr >= 1.3
+
+            # 🔥 FIX: more realistic trigger logic
+            should_alert = (
+                is_extreme or
+                (is_strong and is_entry_zone) or
+                is_breakout
+            )
 
             msg = (
                 f"{ticker} | ${price}\n"
-                f"STATE: {state}\n"
                 f"ENTRY {entry_low}-{entry_high}\n"
                 f"STOP {stop} | T1 {t1} | T2 {t2}\n"
                 f"RR {rr} | Setup {setup}% | Squeeze {squeeze}%"
@@ -121,49 +132,42 @@ if start:
             last_time = st.session_state.last_alert.get(ticker, 0)
 
             # -----------------------------
-            # CORE ALERT CONDITIONS (FIXED LOGIC)
+            # 🔥 DEBUG PANEL (THIS IS KEY)
             # -----------------------------
-            is_entry_zone = entry_low <= price <= entry_high
-            is_breakout = price > entry_high
-            is_extreme = setup >= 80 and rr >= 1.5
-            is_strong = setup >= 65 and squeeze >= 55
-
-            should_alert = (
-                is_extreme or
-                (is_strong and is_entry_zone) or
-                (is_breakout and rr >= 1.3)
+            st.write(
+                ticker,
+                "| extreme:", is_extreme,
+                "| strong:", is_strong,
+                "| entry:", is_entry_zone,
+                "| breakout:", is_breakout,
+                "| alert:", should_alert
             )
 
             # -----------------------------
-            # ALERT ENGINE (FIXED)
+            # ALERT ENGINE
             # -----------------------------
-            if should_alert:
+            if should_alert and now - last_time > cooldown:
 
-                if now - last_time > cooldown:
+                if is_extreme:
+                    alert_msg = "🔥 EXTREME SETUP: " + msg
+                    st.error(alert_msg)
+                elif is_breakout:
+                    alert_msg = "🚀 BREAKOUT ALERT: " + msg
+                    st.warning(alert_msg)
+                else:
+                    alert_msg = "⚡ ENTRY ALERT: " + msg
+                    st.success(alert_msg)
 
-                    if is_extreme:
-                        alert_msg = "🔥 EXTREME EXECUTION SETUP: " + msg
-                        st.error(alert_msg)
-                    elif is_breakout:
-                        alert_msg = "🚀 BREAKOUT ALERT: " + msg
-                        st.warning(alert_msg)
-                    else:
-                        alert_msg = "⚡ ENTRY ALERT: " + msg
-                        st.success(alert_msg)
+                # 🔥 ALWAYS SHOW TELEGRAM RESULT
+                result = send_alert(alert_msg)
+                st.write("📡 TELEGRAM RESULT:", result)
 
-                    # 🔥 CRITICAL: show telegram result
-                    result = send_alert(alert_msg)
-                    st.write(f"📡 TELEGRAM RESULT {ticker}: {result}")
-
-                    st.session_state.last_alert[ticker] = now
+                st.session_state.last_alert[ticker] = now
 
             # -----------------------------
             # DISPLAY
             # -----------------------------
-            if state == "WAITING":
-                st.info(msg)
-            else:
-                st.warning(msg)
+            st.info(msg)
 
         # -----------------------------
         # TOP 10
@@ -174,6 +178,5 @@ if start:
             trade = r.get("trade") or {}
             st.write(
                 f"{r['ticker']} | ${r['price']} | "
-                f"RR {trade.get('rr', 0)} | "
-                f"STATE {trade.get('state', 'WAITING')}"
+                f"RR {trade.get('rr', 0)}"
             )
