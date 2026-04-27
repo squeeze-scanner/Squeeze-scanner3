@@ -1,9 +1,14 @@
 import numpy as np
 import yfinance as yf
 
+
 def arr(x):
     return np.array(x).reshape(-1)
 
+
+# -----------------------------
+# INDICATORS (SAFE)
+# -----------------------------
 def rsi(close):
     c = arr(close)
     if len(c) < 15:
@@ -31,31 +36,42 @@ def momentum(close):
     c = arr(close)
     if len(c) < 20:
         return 0.0
-    return (c[-1] / c[-10]) - 1
+    base = c[-10] if c[-10] != 0 else 1e-9
+    return (c[-1] / base) - 1
 
 
 def trend_strength(close):
     c = arr(close)
     if len(c) < 30:
         return 0.0
-    return (np.mean(c[-10:]) / np.mean(c[-30:])) - 1
+    return (np.mean(c[-10:]) / (np.mean(c[-30:]) + 1e-9)) - 1
 
 
 def breakout(close):
     c = arr(close)
-    return len(c) > 20 and c[-1] > np.max(c[-20:-1])
+    if len(c) < 20:
+        return False
+    return c[-1] > np.max(c[-20:-1])
 
 
+# -----------------------------
+# CORE SCORING
+# -----------------------------
 def score_stock(ticker):
 
     try:
         df = yf.Ticker(ticker).history(period="3mo")
-        if df is None or len(df) < 30:
+
+        if df is None or df.empty or len(df) < 30:
+            return None
+
+        # protect missing volume
+        if "Volume" not in df.columns:
             return None
 
         close = df["Close"].values
         volume = df["Volume"].values
-        price = df["Close"].iloc[-1]
+        price = float(df["Close"].iloc[-1])
 
         r = rsi(close)
         v = volume_intensity(volume)
@@ -63,12 +79,16 @@ def score_stock(ticker):
         t = trend_strength(close)
         br = breakout(close)
 
-        # ---------------- BULL / BEAR ----------------
+        # -----------------------------
+        # BULL / BEAR MODEL
+        # -----------------------------
         bull = 0.5
         bear = 0.5
 
-        if r < 35: bull += 0.15
-        if r > 65: bear += 0.15
+        if r < 35:
+            bull += 0.15
+        elif r > 65:
+            bear += 0.15
 
         bull += max(0, m * 0.6)
         bear += max(0, -m * 0.6)
@@ -76,8 +96,11 @@ def score_stock(ticker):
         bull += max(0, t * 0.5)
         bear += max(0, -t * 0.5)
 
-        if v > 1.3: bull += 0.1
-        if br: bull += 0.15
+        if v > 1.3:
+            bull += 0.1
+
+        if br:
+            bull += 0.15
 
         total = bull + bear
         bull /= total
@@ -85,7 +108,9 @@ def score_stock(ticker):
 
         confidence = abs(bull - bear)
 
-        # ---------------- SIGNAL FIX ----------------
+        # -----------------------------
+        # SIGNAL
+        # -----------------------------
         if bull > 0.60:
             signal = "BULLISH"
         elif bear > 0.60:
@@ -93,7 +118,21 @@ def score_stock(ticker):
         else:
             signal = "NEUTRAL"
 
-        # ---------------- ALERTS ----------------
+        # -----------------------------
+        # SQUEEZE (STABLE FORMULA)
+        # -----------------------------
+        squeeze = (
+            (v * 0.35) +
+            (1.0 if br else 0.0) +
+            abs(m) +
+            abs(t)
+        ) / 3
+
+        squeeze = min(squeeze, 1.0)
+
+        # -----------------------------
+        # ALERTS (MATCH APP)
+        # -----------------------------
         alerts = []
 
         if bull > 0.70 and confidence > 0.15:
@@ -102,24 +141,25 @@ def score_stock(ticker):
         if bear > 0.70 and confidence > 0.15:
             alerts.append("HIGH_BEAR_CONFIDENCE")
 
-        squeeze = v * 0.3 + (1 if br else 0) + abs(m) + abs(t)
-        squeeze = min(squeeze / 2, 1.0)
-
         if squeeze > 0.5:
             alerts.append("HIGH_SQUEEZE_POTENTIAL")
 
         return {
             "ticker": ticker,
             "price": round(price, 2),
+
             "signal": signal,
             "bull_prob": round(bull * 100, 1),
             "bear_prob": round(bear * 100, 1),
             "confidence": round(confidence * 100, 1),
+
             "squeeze_score": round(squeeze * 100, 1),
+
             "alerts": alerts
         }
 
-    except:
+    except Exception as e:
+        print(f"[scanner error {ticker}]:", e)
         return None
 
 
