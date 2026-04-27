@@ -37,7 +37,7 @@ def merge_universe(user_input):
 
 
 # -----------------------------
-# STATE (V3 TRADING MEMORY)
+# STATE
 # -----------------------------
 if "cache" not in st.session_state:
     st.session_state.cache = []
@@ -63,7 +63,7 @@ if start:
     now = time.time()
 
     # -----------------------------
-    # SCAN
+    # SCAN ENGINE
     # -----------------------------
     if now - st.session_state.last_run >= refresh_rate:
 
@@ -102,21 +102,22 @@ if start:
 
         for r in results:
 
-            ticker = r["ticker"]
-            price = r["price"]
+            ticker = r.get("ticker")
+            price = r.get("price", 0)
+
             setup = r.get("setup_score", 0)
             squeeze = r.get("squeeze_score", 0)
+
             trade = r.get("trade") or {}
 
             entry_low, entry_high = trade.get("entry", (0, 0))
             stop = trade.get("stop", 0)
             t1 = trade.get("target1", 0)
             t2 = trade.get("target2", 0)
-
             rr = trade.get("rr", 0)
 
             # -----------------------------
-            # CURRENT STATE
+            # STATE ENGINE
             # -----------------------------
             state = st.session_state.active_trades.get(ticker, "WATCHING")
 
@@ -137,45 +138,66 @@ if start:
 
                 if entry_low <= price <= entry_high:
 
-                    st.session_state.active_trades[ticker] = "IN_TRADE"
+                    if now - last_time > cooldown:
 
-                    alert_msg = "🔥 ENTRY FILLED: " + msg
-                    st.success(alert_msg)
-                    send_alert(alert_msg)
+                        st.session_state.active_trades[ticker] = "IN_TRADE"
 
-                    st.session_state.last_alert[ticker] = now
+                        alert_msg = "🔥 ENTRY FILLED: " + msg
+
+                        st.success(alert_msg)
+                        send_alert(alert_msg)
+
+                        st.session_state.last_alert[ticker] = now
 
             # -----------------------------
             # ACTIVE TRADE MANAGEMENT
             # -----------------------------
             elif state == "IN_TRADE":
 
-                # STOP HIT
+                # STOP LOSS
                 if price <= stop:
-                    st.session_state.active_trades[ticker] = "STOPPED"
 
-                    alert_msg = "🛑 STOP LOSS HIT: " + msg
-                    st.error(alert_msg)
-                    send_alert(alert_msg)
+                    if now - last_time > cooldown:
+
+                        st.session_state.active_trades[ticker] = "STOPPED"
+
+                        alert_msg = "🛑 STOP LOSS HIT: " + msg
+
+                        st.error(alert_msg)
+                        send_alert(alert_msg)
+
+                        st.session_state.last_alert[ticker] = now
 
                 # TARGET 1
                 elif price >= t1 and price < t2:
-                    st.session_state.active_trades[ticker] = "TARGET_1"
 
-                    alert_msg = "🎯 TARGET 1 HIT: " + msg
-                    st.warning(alert_msg)
-                    send_alert(alert_msg)
+                    if now - last_time > cooldown:
+
+                        st.session_state.active_trades[ticker] = "TARGET_1"
+
+                        alert_msg = "🎯 TARGET 1 HIT: " + msg
+
+                        st.warning(alert_msg)
+                        send_alert(alert_msg)
+
+                        st.session_state.last_alert[ticker] = now
 
                 # TARGET 2
                 elif price >= t2:
-                    st.session_state.active_trades[ticker] = "TARGET_2"
 
-                    alert_msg = "🚀 TARGET 2 HIT (FULL WIN): " + msg
-                    st.success(alert_msg)
-                    send_alert(alert_msg)
+                    if now - last_time > cooldown:
+
+                        st.session_state.active_trades[ticker] = "TARGET_2"
+
+                        alert_msg = "🚀 TARGET 2 HIT (FULL WIN): " + msg
+
+                        st.success(alert_msg)
+                        send_alert(alert_msg)
+
+                        st.session_state.last_alert[ticker] = now
 
             # -----------------------------
-            # DISPLAY
+            # DISPLAY LOGIC
             # -----------------------------
             if state == "WATCHING":
                 st.info(msg)
