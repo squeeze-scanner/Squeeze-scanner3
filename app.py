@@ -108,4 +108,96 @@ if start:
 
             st.subheader("🚀 V2 EXECUTION SIGNALS")
 
-            for
+            for r in results:
+
+                ticker = r.get("ticker")
+                signal = r.get("signal", "NEUTRAL")
+                price = r.get("price", 0)
+
+                squeeze = r.get("squeeze_score", 0)
+                setup = r.get("setup_score", 0)
+                alerts = r.get("alerts", [])
+
+                trade = r.get("trade") or {}
+
+                trade_type = trade.get("type", "WAITING")
+                rr = trade.get("rr", 0)
+
+                entry = trade.get("entry", (0, 0))
+                stop = trade.get("stop", 0)
+                t1 = trade.get("target1", 0)
+                t2 = trade.get("target2", 0)
+
+                msg = (
+                    f"{ticker} | {signal} | ${price}\n"
+                    f"TYPE: {trade_type}\n"
+                    f"Entry {entry} | Stop {stop}\n"
+                    f"T1 {t1} | T2 {t2} | RR {rr}\n"
+                    f"Setup {setup}% | Squeeze {squeeze}%"
+                )
+
+                last_time = st.session_state.last_alert.get(ticker, 0)
+
+                # -----------------------------
+                # FIXED ALERT LOGIC (V2 STABLE)
+                # -----------------------------
+                is_extreme = setup >= 80 and rr >= 1.5
+                is_strong = setup >= 65 and squeeze >= 55
+                has_signal = len(alerts) > 0
+                is_breakout = "BREAKOUT" in trade_type or "SQUEEZE" in trade_type
+
+                is_alert = (
+                    is_extreme or
+                    is_strong or
+                    has_signal or
+                    (is_breakout and rr >= 1.3)
+                )
+
+                # DEBUG (keep ON for now)
+                st.write(f"DEBUG {ticker} | setup={setup} rr={rr} type={trade_type}")
+
+                if is_alert:
+
+                    if ticker not in st.session_state.alerted and now - last_time > cooldown:
+
+                        if is_extreme:
+                            alert_msg = "🔥 EXTREME EXECUTION: " + msg
+                            st.error(alert_msg)
+                        else:
+                            alert_msg = "⚡ EXECUTION ALERT: " + msg
+                            st.warning(alert_msg)
+
+                        # IMPORTANT: ensure Telegram result is visible
+                        success = send_alert(alert_msg)
+                        print("TELEGRAM SENT:", success)
+
+                        st.session_state.alerted.add(ticker)
+                        st.session_state.last_alert[ticker] = now
+
+                elif signal == "BULLISH":
+                    st.success(msg)
+
+                elif signal == "BEARISH":
+                    st.warning(msg)
+
+                else:
+                    st.info(msg)
+
+            # -----------------------------
+            # TOP 10
+            # -----------------------------
+            st.subheader("🏆 Top 10 Execution Candidates")
+
+            for r in results[:10]:
+
+                trade = r.get("trade") or {}
+
+                st.write(
+                    f"{r.get('ticker')} | {r.get('signal')} | "
+                    f"${r.get('price')} | "
+                    f"RR {trade.get('rr', 0)} | "
+                    f"TYPE {trade.get('type', 'WAITING')}"
+                )
+
+        else:
+            st.info("Scanning market...")
