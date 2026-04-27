@@ -3,8 +3,11 @@ import time
 from scanner import check_signal
 from telegram import send_alert
 
-st.title("🚀 V23 Squeeze Radar (Fixed Engine)")
+st.title("🚀 V23 Squeeze Radar (Stable Engine)")
 
+# -----------------------------
+# INPUTS
+# -----------------------------
 user_tickers = st.text_input(
     "➕ Add extra tickers (comma separated)",
     "GME,AMC,TSLA"
@@ -14,6 +17,9 @@ refresh_rate = st.slider("Refresh interval (seconds)", 5, 60, 15)
 start = st.toggle("🟢 Start Scanner")
 
 
+# -----------------------------
+# UNIVERSE
+# -----------------------------
 def get_full_universe():
     base = [
         "AAPL","MSFT","NVDA","AMZN","META","GOOGL","TSLA","JPM",
@@ -38,6 +44,9 @@ def merge_universe(user_input):
     return list(set(universe))
 
 
+# -----------------------------
+# STATE
+# -----------------------------
 if "cache" not in st.session_state:
     st.session_state.cache = []
 
@@ -54,10 +63,16 @@ cooldown = 600
 placeholder = st.empty()
 
 
+# -----------------------------
+# MAIN LOOP
+# -----------------------------
 if start:
 
     now = time.time()
 
+    # -----------------------------
+    # THROTTLED SCAN
+    # -----------------------------
     if now - st.session_state.last_run >= refresh_rate:
 
         tickers = merge_universe(user_tickers)[:120]
@@ -72,7 +87,7 @@ if start:
             except:
                 continue
 
-        # sort by squeeze strength (REAL metric)
+        # safe sort (prevents crash if missing keys)
         results.sort(key=lambda x: x.get("squeeze_score", 0), reverse=True)
 
         st.session_state.cache = results
@@ -80,6 +95,9 @@ if start:
 
     results = st.session_state.cache
 
+    # -----------------------------
+    # UI
+    # -----------------------------
     with placeholder.container():
 
         st.subheader("📊 Market Radar")
@@ -94,8 +112,9 @@ if start:
             for r in results:
 
                 ticker = r.get("ticker")
-                signal = r.get("signal")
-                price = r.get("price")
+                signal = r.get("signal", "NEUTRAL")
+                price = r.get("price", 0)
+
                 squeeze = r.get("squeeze_score", 0)
                 bull = r.get("bull_prob", 0)
                 bear = r.get("bear_prob", 0)
@@ -107,7 +126,9 @@ if start:
 
                 last_time = st.session_state.last_alert.get(ticker, 0)
 
-                # FIXED ALERT LOGIC
+                # -----------------------------
+                # ALERT CONDITION (CLEANED)
+                # -----------------------------
                 is_alert = (
                     squeeze >= 50 or
                     bull >= 70 or
@@ -133,14 +154,13 @@ if start:
                 else:
                     st.info(msg)
 
-            st.subheader("🏆 Top 10")
+            st.subheader("🏆 Top 10 Candidates")
 
             for r in results[:10]:
                 st.write(
                     f"{r.get('ticker')} | {r.get('signal')} | "
                     f"${r.get('price')} | Squeeze {r.get('squeeze_score')}%"
                 )
-        else:
-            st.info("Scanning...")
 
-    # IMPORTANT FIX: removed st.rerun()
+        else:
+            st.info("Scanning market...")
