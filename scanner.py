@@ -83,7 +83,7 @@ def breakout(close):
 
 
 # -----------------------------
-# SQUEEZE ENGINE (REALISTIC FIX)
+# SQUEEZE SCORE
 # -----------------------------
 def squeeze_score(v, vol, br, m, t):
     score = 0.0
@@ -131,7 +131,7 @@ def score_stock(ticker):
         squeeze = squeeze_score(v, 0.2, br, m, t)
 
         # -----------------------------
-        # BULL / BEAR MODEL (FIXED SEPARATION)
+        # BULL / BEAR MODEL
         # -----------------------------
         bull = 0.5
         bear = 0.5
@@ -170,7 +170,7 @@ def score_stock(ticker):
             signal = "NEUTRAL"
 
         # -----------------------------
-        # ALERTS (STANDARDIZED FOR APP)
+        # ALERT TAGS (MATCH APP.PY)
         # -----------------------------
         alerts = []
 
