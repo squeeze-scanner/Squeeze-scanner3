@@ -7,7 +7,7 @@ def arr(x):
 
 
 # -----------------------------
-# INDICATORS (SAFE)
+# INDICATORS
 # -----------------------------
 def rsi(close):
     c = arr(close)
@@ -55,7 +55,7 @@ def breakout(close):
 
 
 # -----------------------------
-# TRADE ENGINE (STEP 1 FIXED)
+# V2 TRADE ENGINE (FINAL)
 # -----------------------------
 def build_trade_plan(price, v, m, t, br):
 
@@ -66,21 +66,32 @@ def build_trade_plan(price, v, m, t, br):
 
     stop = price - (price * (0.015 + volatility * 0.5))
 
-    risk = price - stop if price > stop else 0.01
+    risk = max(price - stop, 0.01)
 
     target1 = price + (risk * 1.5)
     target2 = price + (risk * 2.5)
 
-    rr = (target1 - price) / risk if risk != 0 else 0
+    rr = (target1 - price) / risk
 
+    # setup type
     if br and v > 1.3:
         setup_type = "BREAKOUT_SQUEEZE"
     elif m > 0.03:
         setup_type = "MOMENTUM"
     elif t > 0.02:
-        setup_type = "TREND_CONTINUATION"
+        setup_type = "TREND"
     else:
         setup_type = "REVERSAL"
+
+    # -----------------------------
+    # EXECUTION STATE ENGINE (NEW V2 FEATURE)
+    # -----------------------------
+    if price < entry_low:
+        state = "WAITING"
+    elif entry_low <= price <= entry_high:
+        state = "AT_ENTRY"
+    else:
+        state = "BREAKOUT"
 
     return {
         "entry": (round(entry_low, 2), round(entry_high, 2)),
@@ -88,12 +99,13 @@ def build_trade_plan(price, v, m, t, br):
         "target1": round(target1, 2),
         "target2": round(target2, 2),
         "rr": round(rr, 2),
-        "type": setup_type
+        "type": setup_type,
+        "state": state
     }
 
 
 # -----------------------------
-# CORE SCORING
+# CORE ENGINE
 # -----------------------------
 def score_stock(ticker):
 
@@ -156,7 +168,7 @@ def score_stock(ticker):
             signal = "NEUTRAL"
 
         # -----------------------------
-        # SETUP + SQUEEZE
+        # METRICS
         # -----------------------------
         setup = min(v * 0.3 + abs(m) + abs(t) + (1 if br else 0), 1.0)
 
@@ -170,9 +182,9 @@ def score_stock(ticker):
         squeeze = min(squeeze, 1.0)
 
         # -----------------------------
-        # TRADE PLAN (🔥 FIXED INTEGRATION)
+        # TRADE PLAN (V2 CORE)
         # -----------------------------
-        trade = build_trade_plan(price, v, m, t, br)
+        trade_plan = build_trade_plan(price, v, m, t, br)
 
         # -----------------------------
         # ALERTS
@@ -185,11 +197,8 @@ def score_stock(ticker):
         if setup > 0.60 and squeeze > 0.5:
             alerts.append("STRONG_SETUP")
 
-        if bull > 0.72:
-            alerts.append("BULLISH_PRESSURE")
-
-        if bear > 0.72:
-            alerts.append("BEARISH_PRESSURE")
+        if trade_plan["state"] == "BREAKOUT" and trade_plan["rr"] > 1.4:
+            alerts.append("BREAKOUT_READY")
 
         # -----------------------------
         # FINAL SCORE
@@ -213,8 +222,8 @@ def score_stock(ticker):
 
             "alerts": alerts,
 
-            # 🔥 NEW: FULL TRADE ENGINE OUTPUT
-            "trade": trade
+            # 🔥 IMPORTANT FIX (MATCH APP EXPECTATION)
+            "trade_plan": trade_plan
         }
 
     except Exception as e:
