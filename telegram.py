@@ -13,18 +13,7 @@ BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 _last_send_time = 0
 
 
-def send_alert(message, retry=2):
-    """
-    Reliable Telegram sender:
-    - rate limited
-    - retries
-    - safe formatting
-    """
 
-    global _last_send_time
-
-    if not message:
-        return False
 
     try:
         # -----------------------------
@@ -32,7 +21,47 @@ def send_alert(message, retry=2):
         # -----------------------------
         now = time.time()
         delay = now - _last_send_time
+def send_alert(message, retry=2):
 
+    global _last_send_time
+
+    if not message:
+        return False
+
+    now = time.time()
+    delay = now - _last_send_time
+
+    if delay < 1.0:
+        time.sleep(1.0 - delay)
+
+    _last_send_time = time.time()
+
+    safe_msg = html.escape(str(message))[:3500]
+
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": safe_msg,
+        "parse_mode": "HTML"
+    }
+
+    for attempt in range(retry + 1):
+
+        try:
+            res = requests.post(BASE_URL, data=payload, timeout=6)
+
+            print("[TELEGRAM DEBUG]", res.status_code, res.text)
+
+            data = res.json()
+
+            if data.get("ok") is True:
+                return True
+
+        except Exception as e:
+            print("[TELEGRAM ERROR]", e)
+
+        time.sleep(1.5 * (attempt + 1))
+
+    return False
         if delay < 1.0:
             time.sleep(1.0 - delay)
 
