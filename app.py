@@ -3,7 +3,7 @@ import time
 from scanner import check_signal
 from telegram import send_alert
 
-st.title("🚀 V2 Squeeze Radar (Execution Engine)")
+st.title("🚀 V2 Squeeze Radar (EXECUTION ENGINE FIXED)")
 
 # -----------------------------
 # INPUTS
@@ -61,6 +61,7 @@ if "alerted" not in st.session_state:
 cooldown = 600
 placeholder = st.empty()
 
+
 # -----------------------------
 # MAIN LOOP
 # -----------------------------
@@ -82,10 +83,10 @@ if start:
                 res = check_signal(t)
                 if res:
                     results.append(res)
-            except:
-                continue
+            except Exception as e:
+                print("[APP ERROR]", t, e)
 
-        # SORT BY TRUE EXECUTION VALUE
+        # sort by real execution score
         results.sort(key=lambda x: x.get("score", 0), reverse=True)
 
         st.session_state.cache = results
@@ -105,85 +106,6 @@ if start:
 
             st.dataframe(results)
 
-            st.subheader("🚀 V2 TRADE EXECUTION SIGNALS")
+            st.subheader("🚀 V2 EXECUTION SIGNALS")
 
-            for r in results:
-
-                ticker = r.get("ticker")
-                signal = r.get("signal", "NEUTRAL")
-                price = r.get("price", 0)
-
-                squeeze = r.get("squeeze_score", 0)
-                setup = r.get("setup_score", 0)
-                alerts = r.get("alerts", [])
-
-                trade = r.get("trade_plan") or {}
-                state = trade.get("state", "WAITING")
-                rr = trade.get("rr", 0)
-
-                msg = (
-                    f"{ticker} | {signal} | ${price}\n"
-                    f"STATE: {state}\n"
-                    f"Setup {setup}% | Squeeze {squeeze}% | RR {rr}"
-                )
-
-                last_time = st.session_state.last_alert.get(ticker, 0)
-
-                # -----------------------------
-                # V2 EXECUTION LOGIC (IMPORTANT)
-                # -----------------------------
-                is_breakout = state == "BREAKOUT"
-                is_entry = state == "AT_ENTRY"
-
-                is_high_quality = setup >= 65 and squeeze >= 55
-                is_extreme = setup >= 80 and rr >= 1.5
-
-                is_alert = (
-                    is_extreme or
-                    (is_high_quality and is_entry) or
-                    (is_breakout and rr >= 1.3)
-                )
-
-                if is_alert:
-
-                    if ticker not in st.session_state.alerted and now - last_time > cooldown:
-
-                        if is_extreme:
-                            alert_msg = "🔥 EXTREME EXECUTION SETUP: " + msg
-                            st.error(alert_msg)
-                        else:
-                            alert_msg = "⚡ EXECUTION ALERT: " + msg
-                            st.warning(alert_msg)
-
-                        send_alert(alert_msg)
-
-                        st.session_state.alerted.add(ticker)
-                        st.session_state.last_alert[ticker] = now
-
-                elif signal == "BULLISH":
-                    st.success(msg)
-
-                elif signal == "BEARISH":
-                    st.warning(msg)
-
-                else:
-                    st.info(msg)
-
-            # -----------------------------
-            # TOP 10
-            # -----------------------------
-            st.subheader("🏆 Top 10 Execution Candidates")
-
-            for r in results[:10]:
-
-                trade = r.get("trade_plan") or {}
-
-                st.write(
-                    f"{r.get('ticker')} | {r.get('signal')} | "
-                    f"${r.get('price')} | "
-                    f"RR {trade.get('rr', 0)} | "
-                    f"STATE {trade.get('state', 'WAITING')}"
-                )
-
-        else:
-            st.info("Scanning market...")
+            for
