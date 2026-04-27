@@ -101,7 +101,7 @@ def breakout(close):
 
 
 # -----------------------------
-# SHORT DATA (WEAK SIGNAL SAFE)
+# SHORT DATA
 # -----------------------------
 def get_short_data(info):
     short_pct = safe(info.get("shortPercentOfFloat"))
@@ -114,15 +114,14 @@ def get_short_data(info):
 
 
 # -----------------------------
-# PROBABILITY ENGINE (V25 CORE)
+# PROBABILITY ENGINE
 # -----------------------------
 def compute_probabilities(r, v, m, t, vol, br, short_pct, days_cover):
 
-    # base neutral probabilities
     bullish = 0.50
     bearish = 0.50
 
-    # RSI bias
+    # RSI
     if r < 30:
         bullish += 0.10
     elif r > 70:
@@ -136,7 +135,7 @@ def compute_probabilities(r, v, m, t, vol, br, short_pct, days_cover):
     bullish += max(0, t * 1.5)
     bearish += max(0, -t * 1.5)
 
-    # volume confirmation
+    # volume
     if v > 1.5:
         bullish += 0.05
 
@@ -144,11 +143,7 @@ def compute_probabilities(r, v, m, t, vol, br, short_pct, days_cover):
     if br:
         bullish += 0.10
 
-    # volatility (both risk + opportunity)
-    if vol > 0.03:
-        bullish += 0.03
-
-    # short squeeze potential
+    # squeeze pressure
     squeeze = 0.0
     if short_pct:
         squeeze += min(short_pct / 100, 0.25)
@@ -156,7 +151,6 @@ def compute_probabilities(r, v, m, t, vol, br, short_pct, days_cover):
     if days_cover:
         squeeze += min(days_cover / 20, 0.25)
 
-    # normalize
     total = bullish + bearish
     bullish /= total
     bearish /= total
@@ -165,7 +159,7 @@ def compute_probabilities(r, v, m, t, vol, br, short_pct, days_cover):
 
 
 # -----------------------------
-# CORE ENGINE (V25 PREDICTIVE)
+# CORE ENGINE (V26)
 # -----------------------------
 def score_stock(ticker):
 
@@ -176,7 +170,6 @@ def score_stock(ticker):
         if df is None or df.empty or len(df) < 30:
             return None
 
-        # fast filter first
         if fast_filter(df) is None:
             return None
 
@@ -202,33 +195,45 @@ def score_stock(ticker):
             r, v, m, t, vol, br, short_pct, days_cover
         )
 
-        # confidence = strength of signal
         confidence = abs(bullish - bearish)
 
-        # final classification
-        if bullish > 0.62:
+        # -----------------------------
+        # SIGNAL LABEL
+        # -----------------------------
+        if bullish > 0.65:
             signal = "BULLISH"
-        elif bearish > 0.62:
+        elif bearish > 0.65:
             signal = "BEARISH"
         else:
             signal = "NEUTRAL"
+
+        # -----------------------------
+        # ALERT FLAGS (NEW V26)
+        # -----------------------------
+        alerts = []
+
+        if bullish >= 0.70 and confidence >= 0.20:
+            alerts.append("🔥 HIGH_BULL_CONFIDENCE")
+
+        if bearish >= 0.70 and confidence >= 0.20:
+            alerts.append("🧨 HIGH_BEAR_CONFIDENCE")
+
+        if squeeze >= 0.35:
+            alerts.append("🚀 HIGH_SQUEEZE_POTENTIAL")
 
         return {
             "ticker": ticker,
             "price": round(price, 2),
 
-            # probabilities
             "bull_prob": round(bullish * 100, 1),
             "bear_prob": round(bearish * 100, 1),
             "confidence": round(confidence * 100, 1),
 
-            # squeeze metric
             "squeeze_score": round(squeeze * 100, 1),
 
-            # label
             "signal": signal,
+            "alerts": alerts,
 
-            # raw indicators
             "RSI": round(r, 2),
             "volume": round(v, 2),
             "momentum": round(m, 4),
