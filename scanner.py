@@ -65,7 +65,6 @@ def score_stock(ticker):
         if df is None or df.empty or len(df) < 30:
             return None
 
-        # protect missing volume
         if "Volume" not in df.columns:
             return None
 
@@ -119,7 +118,7 @@ def score_stock(ticker):
             signal = "NEUTRAL"
 
         # -----------------------------
-        # SQUEEZE (STABLE FORMULA)
+        # SQUEEZE SCORE
         # -----------------------------
         squeeze = (
             (v * 0.35) +
@@ -131,7 +130,7 @@ def score_stock(ticker):
         squeeze = min(squeeze, 1.0)
 
         # -----------------------------
-        # ALERTS (MATCH APP)
+        # ALERTS
         # -----------------------------
         alerts = []
 
@@ -144,16 +143,24 @@ def score_stock(ticker):
         if squeeze > 0.5:
             alerts.append("HIGH_SQUEEZE_POTENTIAL")
 
+        # -----------------------------
+        # FINAL OUTPUT (IMPORTANT FIX)
+        # -----------------------------
+        score = (bull * 100 + squeeze * 50 + confidence * 100) / 3
+
         return {
             "ticker": ticker,
             "price": round(price, 2),
 
             "signal": signal,
+
             "bull_prob": round(bull * 100, 1),
             "bear_prob": round(bear * 100, 1),
             "confidence": round(confidence * 100, 1),
 
             "squeeze_score": round(squeeze * 100, 1),
+
+            "score": round(score, 2),   # ✅ CRITICAL FIX for app.py
 
             "alerts": alerts
         }
