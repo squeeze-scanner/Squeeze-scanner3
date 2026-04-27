@@ -212,3 +212,20 @@ def score_stock(stock):
 
 
 # -----------------------------
+# PUBLIC FUNCTION (V22)
+# -----------------------------
+def check_signal(ticker):
+
+    try:
+        # STEP 1: FAST FILTER (NEW)
+        fast = fast_filter(ticker)
+
+        if fast is None:
+            return None
+
+        # STEP 2: FULL ANALYSIS ONLY IF ACTIVE
+        stock = yf.Ticker(ticker)
+        return score_stock(stock)
+
+    except:
+        return None
