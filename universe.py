@@ -1,45 +1,47 @@
 # universe.py
 
 BASE_UNIVERSE = [
-    # Mega caps (core liquidity)
     "AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","GOOG",
-
-    # Financial giants
     "JPM","GS","V","MA","BAC","WFC","C","MS",
-
-    # ETFs (market proxy coverage)
     "SPY","QQQ","IWM","DIA","ARKK","XLF","XLK",
-
-    # High volatility / retail momentum
     "PLTR","GME","AMC","BB","NIO","SOFI","RIVN","LCID","COIN",
-
-    # Tech / growth
     "AMD","INTC","NFLX","PYPL","UBER","LYFT","SQ","SHOP","ORCL","CRM","ADBE",
-
-    # Energy / industrial
     "XOM","CVX","BA","CAT",
-
-    # China / global exposure
-    "BABA","TSM","NIO","PDD",
-
-    # Defensive / consumer
+    "BABA","TSM","PDD",
     "DIS","KO","PEP","WMT","T","VZ"
 ]
 
 
 # -----------------------------
-# OPTIONAL: DYNAMIC EXPANSION LAYER
+# MAIN UNIVERSE FUNCTION
 # -----------------------------
-def get_universe(extra_tickers=None):
+def get_universe(user_input=None, extra_list=None):
     """
-    Combines base universe with user input tickers.
-    This is your SAFE scalable entry point.
+    Returns full scan universe:
+    - base market universe
+    - plus user input string
+    - plus optional list input
     """
 
     universe = BASE_UNIVERSE.copy()
 
-    if extra_tickers:
-        cleaned = [t.strip().upper() for t in extra_tickers if t.strip()]
+    # -----------------------------
+    # INPUT TYPE 1: STRING (from UI)
+    # -----------------------------
+    if user_input:
+        cleaned = [
+            t.strip().upper()
+            for t in user_input.split(",")
+            if t.strip()
+        ]
         universe.extend(cleaned)
 
+    # -----------------------------
+    # INPUT TYPE 2: LIST (advanced use)
+    # -----------------------------
+    if extra_list:
+        cleaned = [t.strip().upper() for t in extra_list if t]
+        universe.extend(cleaned)
+
+    # remove duplicates
     return list(set(universe))
