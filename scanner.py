@@ -9,7 +9,7 @@ def arr(x):
     return np.array(x).reshape(-1)
 
 
-def safe(x, default=0.0):
+def safe(x, default=None):
     try:
         if x is None:
             return default
@@ -19,12 +19,9 @@ def safe(x, default=0.0):
 
 
 # -----------------------------
-# FAST FILTER (NEW — IMPORTANT)
+# FAST FILTER
 # -----------------------------
 def fast_filter(ticker):
-    """
-    Lightweight pre-screen to avoid wasting full scans
-    """
     try:
         t = yf.Ticker(ticker)
         df = t.history(period="5d", interval="1d")
@@ -40,7 +37,6 @@ def fast_filter(ticker):
 
         fast_score = (price_change * 100) + vol_ratio
 
-        # reject dead tickers early
         if fast_score < 1.5:
             return None
 
@@ -48,6 +44,20 @@ def fast_filter(ticker):
 
     except:
         return None
+
+
+# -----------------------------
+# SHORT DATA (NEW)
+# -----------------------------
+def get_short_data(info):
+
+    short_pct = safe(info.get("shortPercentOfFloat"))
+    days_cover = safe(info.get("shortRatio"))
+
+    if short_pct is not None:
+        short_pct = round(short_pct * 100, 2)
+
+    return short_pct, days_cover
 
 
 # -----------------------------
@@ -140,7 +150,7 @@ def breakout(close):
 
 
 # -----------------------------
-# CORE ENGINE
+# CORE ENGINE (V23)
 # -----------------------------
 def score_stock(stock):
 
@@ -152,15 +162,20 @@ def score_stock(stock):
 
         close = df["Close"].values
         volume = df["Volume"].values
-
         price = df["Close"].iloc[-1]
 
+        info = stock.info
+
+        # indicators
         r = rsi(close)
         v = volume_intensity(volume)
         m = momentum(close)
         t = trend_strength(close)
         vol = volatility(close)
         br = breakout(close)
+
+        # NEW SHORT DATA
+        short_pct, days_cover = get_short_data(info)
 
         score = 0
 
@@ -192,19 +207,42 @@ def score_stock(stock):
         # volatility
         score += min(vol * 50, 15)
 
+        # -----------------------------
+        # 🔥 SQUEEZE LOGIC (NEW)
+        # -----------------------------
+        if short_pct is not None:
+            if short_pct > 40:
+                score += 20
+            elif short_pct > 20:
+                score += 12
+            elif short_pct > 10:
+                score += 6
+
+        if days_cover is not None:
+            if days_cover > 10:
+                score += 15
+            elif days_cover > 5:
+                score += 8
+            elif days_cover > 3:
+                score += 4
+
         score = round(min(score, 100), 2)
 
         signal = "HIGH" if score >= 70 else "MED" if score >= 45 else "LOW"
 
         return {
             "ticker": stock.ticker,
-            "price": safe(price),
+            "price": round(safe(price, 0), 2),
             "score": score,
             "signal": signal,
             "RSI": round(r, 2),
             "volume": round(v, 2),
             "momentum": round(m, 4),
-            "trend": round(t, 4)
+            "trend": round(t, 4),
+
+            # NEW DATA
+            "short_%": short_pct if short_pct is not None else "N/A",
+            "days_to_cover": days_cover if days_cover is not None else "N/A"
         }
 
     except:
@@ -212,18 +250,16 @@ def score_stock(stock):
 
 
 # -----------------------------
-# PUBLIC FUNCTION (V22)
+# PUBLIC FUNCTION
 # -----------------------------
 def check_signal(ticker):
 
     try:
-        # STEP 1: FAST FILTER (NEW)
         fast = fast_filter(ticker)
 
         if fast is None:
             return None
 
-        # STEP 2: FULL ANALYSIS ONLY IF ACTIVE
         stock = yf.Ticker(ticker)
         return score_stock(stock)
 
