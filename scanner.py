@@ -206,7 +206,51 @@ def score_stock(ticker):
 
             "alerts": alerts
         }
+# -----------------------------
+# TRADE SETUP ENGINE
+# -----------------------------
+def build_trade_plan(price, v, m, t, br):
+    """
+    Creates structured trade levels:
+    entry, stop, targets, RR
+    """
 
+    # simple volatility proxy (stable, no extra libs)
+    volatility = (abs(m) + abs(t) + 0.01)
+
+    # entry zone (small breakout zone)
+    entry_low = price * (1 - 0.003)
+    entry_high = price * (1 + 0.003)
+
+    # stop loss (below structure)
+    stop = price - (price * (0.015 + volatility * 0.5))
+
+    # targets (based on risk)
+    risk = price - stop
+
+    target1 = price + (risk * 1.5)
+    target2 = price + (risk * 2.5)
+
+    rr = (target1 - price) / risk if risk != 0 else 0
+
+    # setup classification
+    if br and v > 1.3:
+        setup_type = "BREAKOUT_SQUEEZE"
+    elif m > 0.03:
+        setup_type = "MOMENTUM"
+    elif t > 0.02:
+        setup_type = "TREND_CONTINUATION"
+    else:
+        setup_type = "REVERSAL"
+
+    return {
+        "entry": (round(entry_low, 2), round(entry_high, 2)),
+        "stop": round(stop, 2),
+        "target1": round(target1, 2),
+        "target2": round(target2, 2),
+        "rr": round(rr, 2),
+        "type": setup_type
+    }
     except Exception as e:
         print(f"[scanner error {ticker}]:", e)
         return None
