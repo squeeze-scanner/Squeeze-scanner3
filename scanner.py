@@ -17,7 +17,7 @@ def safe(x, default=0.0):
 
 
 # -----------------------------
-# FAST FILTER (RELAXED - IMPORTANT FIX)
+# FAST FILTER (RELAXED - FIXED)
 # -----------------------------
 def fast_filter(df):
     try:
@@ -28,12 +28,14 @@ def fast_filter(df):
         volume = df["Volume"].values
 
         price_change = (close[-1] / close[-2]) - 1 if close[-2] != 0 else 0
-        vol_ratio = volume[-1] / (np.mean(volume[-20:]) if len(volume) >= 20 else np.mean(volume))
+
+        vol_avg = np.mean(volume[-20:]) if len(volume) >= 20 else np.mean(volume)
+        vol_ratio = volume[-1] / vol_avg if vol_avg != 0 else 1
 
         fast_score = (price_change * 100) + vol_ratio
 
-        # 🔥 FIX: much less strict so universe actually works
-        return fast_score if fast_score > -2 else None
+        # FIX: allow more tickers through
+        return fast_score if fast_score > -5 else None
 
     except:
         return None
@@ -100,27 +102,23 @@ def breakout(close):
 
 
 # -----------------------------
-# SQUEEZE ENGINE (FIXED - NO INFO DEPENDENCY)
+# SQUEEZE ENGINE (FIXED)
 # -----------------------------
 def squeeze_score(v, vol, br, m, t):
-    score = 0
+    score = 0.0
 
-    # volume spike
-    if v > 1.5:
-        score += 0.25
-    elif v > 1.2:
-        score += 0.15
-
-    # volatility expansion
-    score += min(vol * 0.4, 0.25)
-
-    # breakout
-    if br:
+    if v > 1.3:
+        score += 0.3
+    elif v > 1.1:
         score += 0.2
 
-    # trend + momentum alignment
-    score += max(0, m * 0.2)
-    score += max(0, t * 0.2)
+    score += min(vol * 0.5, 0.3)
+
+    if br:
+        score += 0.25
+
+    score += max(0, m * 0.3)
+    score += max(0, t * 0.3)
 
     return min(score, 1.0)
 
@@ -137,7 +135,6 @@ def score_stock(ticker):
         if df is None or df.empty or len(df) < 30:
             return None
 
-        # fast filter
         if fast_filter(df) is None:
             return None
 
@@ -155,27 +152,32 @@ def score_stock(ticker):
         squeeze = squeeze_score(v, vol, br, m, t)
 
         # -----------------------------
-        # BULL / BEAR MODEL
+        # BULL / BEAR MODEL (FIXED BALANCE)
         # -----------------------------
         bull = 0.5
         bear = 0.5
 
-        if r < 30:
-            bull += 0.1
-        elif r > 70:
-            bear += 0.1
+        # RSI
+        if r < 35:
+            bull += 0.12
+        elif r > 65:
+            bear += 0.12
 
-        bull += max(0, m * 0.4)
-        bear += max(0, -m * 0.4)
+        # momentum
+        bull += max(0, m * 0.5)
+        bear += max(0, -m * 0.5)
 
+        # trend
         bull += max(0, t * 0.4)
         bear += max(0, -t * 0.4)
 
-        if v > 1.5:
-            bull += 0.05
+        # volume
+        if v > 1.3:
+            bull += 0.08
 
+        # breakout
         if br:
-            bull += 0.1
+            bull += 0.12
 
         total = bull + bear
         bull /= total
@@ -184,24 +186,27 @@ def score_stock(ticker):
         confidence = abs(bull - bear)
 
         # -----------------------------
-        # SIGNALS
+        # SIGNAL FIX (LESS NEUTRAL, MORE ACTIONABLE)
         # -----------------------------
-        if bull > 0.65:
+        if bull - bear > 0.06:
             signal = "BULLISH"
-        elif bear > 0.65:
+        elif bear - bull > 0.06:
             signal = "BEARISH"
         else:
             signal = "NEUTRAL"
 
+        # -----------------------------
+        # ALERTS (FIXED TRIGGERS)
+        # -----------------------------
         alerts = []
 
-        if bull > 0.7 and confidence > 0.2:
+        if bull > 0.68:
             alerts.append("🔥 HIGH_BULL_CONFIDENCE")
 
-        if bear > 0.7 and confidence > 0.2:
+        if bear > 0.68:
             alerts.append("🧨 HIGH_BEAR_CONFIDENCE")
 
-        if squeeze > 0.6:
+        if squeeze > 0.45:
             alerts.append("🚀 HIGH_SQUEEZE_POTENTIAL")
 
         return {
