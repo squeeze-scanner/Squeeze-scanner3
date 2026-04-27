@@ -3,7 +3,7 @@ import time
 from scanner import check_signal
 from telegram import send_alert
 
-st.title("🚀 V3 Execution Engine (LIVE TRADE TRACKER)")
+st.title("🚀 V3 Execution Engine (FIXED ALERT SYSTEM)")
 
 # -----------------------------
 # INPUTS
@@ -27,7 +27,6 @@ def get_full_universe():
         "AMD","INTC","PYPL","UBER","SQ","SHOP","BABA"
     ]
 
-
 def merge_universe(user_input):
     universe = get_full_universe()
     if user_input:
@@ -35,15 +34,11 @@ def merge_universe(user_input):
         universe.extend(manual)
     return list(set(universe))
 
-
 # -----------------------------
 # STATE
 # -----------------------------
 if "cache" not in st.session_state:
     st.session_state.cache = []
-
-if "active_trades" not in st.session_state:
-    st.session_state.active_trades = {}
 
 if "last_run" not in st.session_state:
     st.session_state.last_run = 0
@@ -51,43 +46,42 @@ if "last_run" not in st.session_state:
 if "last_alert" not in st.session_state:
     st.session_state.last_alert = {}
 
-cooldown = 120   # 🔥 reduced so alerts actually fire
+cooldown = 180  # shorter so you actually see alerts
 placeholder = st.empty()
 
-
 # -----------------------------
-# SCAN ENGINE
-# -----------------------------
-def run_scan():
-    tickers = merge_universe(user_tickers)[:120]
-    results = []
-
-    for t in tickers:
-        try:
-            res = check_signal(t)
-            if res:
-                results.append(res)
-        except:
-            continue
-
-    results.sort(key=lambda x: x.get("score", 0), reverse=True)
-    return results
-
-
-# -----------------------------
-# MAIN ENGINE
+# ENGINE
 # -----------------------------
 if start:
 
     now = time.time()
 
-    # run scan
+    # -----------------------------
+    # SCAN
+    # -----------------------------
     if now - st.session_state.last_run >= refresh_rate:
-        st.session_state.cache = run_scan()
+
+        tickers = merge_universe(user_tickers)[:120]
+        results = []
+
+        for t in tickers:
+            try:
+                res = check_signal(t)
+                if res:
+                    results.append(res)
+            except Exception as e:
+                print("[SCAN ERROR]", t, e)
+
+        results.sort(key=lambda x: x.get("score", 0), reverse=True)
+
+        st.session_state.cache = results
         st.session_state.last_run = now
 
     results = st.session_state.cache
 
+    # -----------------------------
+    # UI
+    # -----------------------------
     with placeholder.container():
 
         st.subheader("📊 Market Radar")
@@ -98,7 +92,7 @@ if start:
 
         st.dataframe(results)
 
-        st.subheader("🚀 V3 LIVE TRADE ENGINE")
+        st.subheader("🚀 V3 LIVE EXECUTION SIGNALS")
 
         for r in results:
 
@@ -107,7 +101,6 @@ if start:
 
             setup = r.get("setup_score", 0)
             squeeze = r.get("squeeze_score", 0)
-
             trade = r.get("trade") or {}
 
             entry_low, entry_high = trade.get("entry", (0, 0))
@@ -115,8 +108,7 @@ if start:
             t1 = trade.get("target1", 0)
             t2 = trade.get("target2", 0)
             rr = trade.get("rr", 0)
-
-            state = st.session_state.active_trades.get(ticker, "WATCHING")
+            state = trade.get("state", "WAITING")
 
             msg = (
                 f"{ticker} | ${price}\n"
@@ -129,67 +121,59 @@ if start:
             last_time = st.session_state.last_alert.get(ticker, 0)
 
             # -----------------------------
-            # FIXED EXECUTION LOGIC
+            # CORE ALERT CONDITIONS (FIXED LOGIC)
             # -----------------------------
-            entry_hit = entry_low <= price <= entry_high
+            is_entry_zone = entry_low <= price <= entry_high
+            is_breakout = price > entry_high
+            is_extreme = setup >= 80 and rr >= 1.5
+            is_strong = setup >= 65 and squeeze >= 55
 
-            if state == "WATCHING" and entry_hit:
+            should_alert = (
+                is_extreme or
+                (is_strong and is_entry_zone) or
+                (is_breakout and rr >= 1.3)
+            )
 
-                st.session_state.active_trades[ticker] = "IN_TRADE"
+            # -----------------------------
+            # ALERT ENGINE (FIXED)
+            # -----------------------------
+            if should_alert:
 
-                alert_msg = "🔥 ENTRY FILLED: " + msg
-                st.success(alert_msg)
+                if now - last_time > cooldown:
 
-                send_alert(alert_msg)
+                    if is_extreme:
+                        alert_msg = "🔥 EXTREME EXECUTION SETUP: " + msg
+                        st.error(alert_msg)
+                    elif is_breakout:
+                        alert_msg = "🚀 BREAKOUT ALERT: " + msg
+                        st.warning(alert_msg)
+                    else:
+                        alert_msg = "⚡ ENTRY ALERT: " + msg
+                        st.success(alert_msg)
 
-                st.session_state.last_alert[ticker] = now
+                    # 🔥 CRITICAL: show telegram result
+                    result = send_alert(alert_msg)
+                    st.write(f"📡 TELEGRAM RESULT {ticker}: {result}")
 
-            elif state == "IN_TRADE":
-
-                if price <= stop:
-
-                    st.session_state.active_trades[ticker] = "STOPPED"
-                    alert_msg = "🛑 STOP LOSS HIT: " + msg
-                    st.error(alert_msg)
-                    send_alert(alert_msg)
-
-                elif price >= t2:
-
-                    st.session_state.active_trades[ticker] = "TARGET_2"
-                    alert_msg = "🚀 TARGET 2 HIT (FULL WIN): " + msg
-                    st.success(alert_msg)
-                    send_alert(alert_msg)
-
-                elif price >= t1:
-
-                    st.session_state.active_trades[ticker] = "TARGET_1"
-                    alert_msg = "🎯 TARGET 1 HIT: " + msg
-                    st.warning(alert_msg)
-                    send_alert(alert_msg)
+                    st.session_state.last_alert[ticker] = now
 
             # -----------------------------
             # DISPLAY
             # -----------------------------
-            if state == "WATCHING":
+            if state == "WAITING":
                 st.info(msg)
-            elif state == "IN_TRADE":
-                st.warning(msg)
-            elif state == "TARGET_2":
-                st.success(msg)
-            elif state == "STOPPED":
-                st.error(msg)
             else:
-                st.info(msg)
+                st.warning(msg)
 
         # -----------------------------
         # TOP 10
         # -----------------------------
-        st.subheader("🏆 Top 10 Opportunities")
+        st.subheader("🏆 Top 10")
 
         for r in results[:10]:
             trade = r.get("trade") or {}
             st.write(
                 f"{r['ticker']} | ${r['price']} | "
                 f"RR {trade.get('rr', 0)} | "
-                f"STATE {st.session_state.active_trades.get(r['ticker'], 'WATCHING')}"
+                f"STATE {trade.get('state', 'WAITING')}"
             )
