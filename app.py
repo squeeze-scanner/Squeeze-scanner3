@@ -2,6 +2,16 @@ import streamlit as st
 import time
 from scanner import check_signal
 from telegram import send_alert
+import requests
+
+if st.button("🔥 TEST TELEGRAM NOW"):
+    from telegram import send_alert
+
+    st.write("Sending test message...")
+
+    result = send_alert("🔥 STREAMLIT TEST MESSAGE")
+
+    st.write("RESULT:", result)
 
 st.title("🚀 V3 Execution Engine (LIVE TRADE TRACKER)")
 
