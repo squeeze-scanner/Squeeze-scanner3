@@ -1,10 +1,9 @@
 import streamlit as st
 import time
-import numpy as np
 from scanner import check_signal
 from telegram import send_alert
 
-st.title("🚀 V23 Squeeze Radar (FULL TRADE ENGINE)")
+st.title("🚀 V2 Squeeze Radar (Execution Engine)")
 
 # -----------------------------
 # INPUTS
@@ -16,7 +15,6 @@ user_tickers = st.text_input(
 
 refresh_rate = st.slider("Refresh interval (seconds)", 5, 60, 15)
 start = st.toggle("🟢 Start Scanner")
-
 
 # -----------------------------
 # UNIVERSE
@@ -63,7 +61,6 @@ if "alerted" not in st.session_state:
 cooldown = 600
 placeholder = st.empty()
 
-
 # -----------------------------
 # MAIN LOOP
 # -----------------------------
@@ -72,7 +69,7 @@ if start:
     now = time.time()
 
     # -----------------------------
-    # SCAN
+    # SCAN ENGINE
     # -----------------------------
     if now - st.session_state.last_run >= refresh_rate:
 
@@ -85,10 +82,11 @@ if start:
                 res = check_signal(t)
                 if res:
                     results.append(res)
-            except Exception as e:
-                print("[APP ERROR]", t, e)
+            except:
+                continue
 
-        results.sort(key=lambda x: x.get("setup_score", 0), reverse=True)
+        # SORT BY TRUE EXECUTION VALUE
+        results.sort(key=lambda x: x.get("score", 0), reverse=True)
 
         st.session_state.cache = results
         st.session_state.last_run = now
@@ -107,7 +105,7 @@ if start:
 
             st.dataframe(results)
 
-            st.subheader("🚀 TRADE SETUPS (LEVEL UP ENGINE)")
+            st.subheader("🚀 V2 TRADE EXECUTION SIGNALS")
 
             for r in results:
 
@@ -116,40 +114,45 @@ if start:
                 price = r.get("price", 0)
 
                 squeeze = r.get("squeeze_score", 0)
-                bull = r.get("bull_prob", 0)
-                bear = r.get("bear_prob", 0)
                 setup = r.get("setup_score", 0)
                 alerts = r.get("alerts", [])
 
+                trade = r.get("trade_plan") or {}
+                state = trade.get("state", "WAITING")
+                rr = trade.get("rr", 0)
+
                 msg = (
                     f"{ticker} | {signal} | ${price}\n"
-                    f"Setup {setup}%\n"
-                    f"Bull {bull}% | Bear {bear}% | Squeeze {squeeze}%"
+                    f"STATE: {state}\n"
+                    f"Setup {setup}% | Squeeze {squeeze}% | RR {rr}"
                 )
 
                 last_time = st.session_state.last_alert.get(ticker, 0)
 
                 # -----------------------------
-                # FIXED ALERT LOGIC
+                # V2 EXECUTION LOGIC (IMPORTANT)
                 # -----------------------------
-                is_extreme = setup >= 75 and bull >= 70
-                is_strong = setup >= 60 and squeeze >= 55
-                has_signal_alert = len(alerts) > 0
+                is_breakout = state == "BREAKOUT"
+                is_entry = state == "AT_ENTRY"
 
-                is_alert = is_extreme or is_strong or has_signal_alert
+                is_high_quality = setup >= 65 and squeeze >= 55
+                is_extreme = setup >= 80 and rr >= 1.5
 
-                # DEBUG (keep while testing)
-                st.write(f"DEBUG {ticker}: setup={setup} squeeze={squeeze} bull={bull}")
+                is_alert = (
+                    is_extreme or
+                    (is_high_quality and is_entry) or
+                    (is_breakout and rr >= 1.3)
+                )
 
                 if is_alert:
 
                     if ticker not in st.session_state.alerted and now - last_time > cooldown:
 
                         if is_extreme:
-                            alert_msg = "🔥 EXTREME TRADE SETUP: " + msg
+                            alert_msg = "🔥 EXTREME EXECUTION SETUP: " + msg
                             st.error(alert_msg)
                         else:
-                            alert_msg = "⚡ HIGH QUALITY SETUP: " + msg
+                            alert_msg = "⚡ EXECUTION ALERT: " + msg
                             st.warning(alert_msg)
 
                         send_alert(alert_msg)
@@ -169,15 +172,17 @@ if start:
             # -----------------------------
             # TOP 10
             # -----------------------------
-            st.subheader("🏆 Top 10 Candidates")
+            st.subheader("🏆 Top 10 Execution Candidates")
 
             for r in results[:10]:
+
+                trade = r.get("trade_plan") or {}
 
                 st.write(
                     f"{r.get('ticker')} | {r.get('signal')} | "
                     f"${r.get('price')} | "
-                    f"Setup {r.get('setup_score', 0)} | "
-                    f"Squeeze {r.get('squeeze_score', 0)}"
+                    f"RR {trade.get('rr', 0)} | "
+                    f"STATE {trade.get('state', 'WAITING')}"
                 )
 
         else:
