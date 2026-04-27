@@ -130,26 +130,48 @@ def score_stock(ticker):
         t = trend_strength(close)
         br = breakout(close)
 
-        # BULL / BEAR
+        # -----------------------------
+        # TREND DIRECTION (NEW CORE FIX)
+        # -----------------------------
+        trend_bias = (m * 1.2) + (t * 1.0)
+
+        if r > 65:
+            trend_bias -= 0.5
+        if r < 35:
+            trend_bias += 0.5
+
+        # FINAL DIRECTION
+        if trend_bias > 0.15:
+            direction = "BULLISH"
+        elif trend_bias < -0.15:
+            direction = "BEARISH"
+        else:
+            direction = "NEUTRAL"
+
+        # -----------------------------
+        # BULL / BEAR MODEL (CLEANED)
+        # -----------------------------
         bull = 0.5
         bear = 0.5
 
-        if r < 35:
-            bull += 0.15
-        elif r > 65:
-            bear += 0.15
+        # ONLY allow breakout to help direction, not override it
+        if br:
+            if direction == "BULLISH":
+                bull += 0.15
+            elif direction == "BEARISH":
+                bear += 0.15
 
-        bull += max(0, m * 0.55)
-        bear += max(0, -m * 0.55)
+        bull += max(0, m * 0.4)
+        bear += max(0, -m * 0.4)
 
-        bull += max(0, t * 0.45)
-        bear += max(0, -t * 0.45)
+        bull += max(0, t * 0.3)
+        bear += max(0, -t * 0.3)
 
         if v > 1.3:
-            bull += 0.1
-
-        if br:
-            bull += 0.15
+            if direction == "BULLISH":
+                bull += 0.1
+            elif direction == "BEARISH":
+                bear += 0.1
 
         total = bull + bear
         bull /= total
@@ -157,36 +179,65 @@ def score_stock(ticker):
 
         confidence = abs(bull - bear)
 
-        if bull > 0.62:
+        # -----------------------------
+        # SIGNAL (NOW DIRECTIONAL)
+        # -----------------------------
+        if direction == "BULLISH" and bull > 0.58:
             signal = "BULLISH"
-        elif bear > 0.62:
+        elif direction == "BEARISH" and bear > 0.58:
             signal = "BEARISH"
         else:
             signal = "NEUTRAL"
 
+        # -----------------------------
+        # SETUP SCORE (UNCHANGED LOGIC)
+        # -----------------------------
         setup = min(v * 0.3 + abs(m) + abs(t) + (1 if br else 0), 1.0)
 
         squeeze = min((v * 0.3 + (1 if br else 0) + abs(m) + abs(t)) / 3, 1.0)
 
         trade_plan = build_trade_plan(price, v, m, t, br)
 
+        alerts = []
+
+        # -----------------------------
+        # EXTREME ONLY IF DIRECTION AGREES
+        # -----------------------------
+        if setup > 0.75 and confidence > 0.15:
+
+            if direction == "BULLISH" and signal == "BULLISH":
+                alerts.append("EXTREME_BULL")
+            elif direction == "BEARISH" and signal == "BEARISH":
+                alerts.append("EXTREME_BEAR")
+
+        if setup > 0.60 and squeeze > 0.5:
+            alerts.append("STRONG_SETUP")
+
+        if trade_plan["state"] == "IN_TREND" and trade_plan["rr"] > 1.4:
+            alerts.append("TREND_BREAKOUT_READY")
+
+        score = (setup * 100 + squeeze * 60 + confidence * 80) / 3
+
         return {
             "ticker": ticker,
             "price": round(price, 2),
+
             "signal": signal,
+            "direction": direction,   # 🔥 NEW FIELD
+
             "bull_prob": round(bull * 100, 1),
             "bear_prob": round(bear * 100, 1),
             "confidence": round(confidence * 100, 1),
+
             "squeeze_score": round(squeeze * 100, 1),
             "setup_score": round(setup * 100, 1),
-            "score": round((setup * 100 + squeeze * 60 + confidence * 80) / 3, 2),
+
+            "score": round(score, 2),
+
+            "alerts": alerts,
             "trade_plan": trade_plan
         }
 
     except Exception as e:
         print("[scanner error]", ticker, e)
         return None
-
-
-def check_signal(ticker):
-    return score_stock(ticker)
