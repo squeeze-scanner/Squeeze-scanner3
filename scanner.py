@@ -7,18 +7,7 @@ import yfinance as yf
 def arr(x):
     return np.array(x).reshape(-1)
 
-def safe(x, default=0.0):
-    try:
-        if x is None:
-            return default
-        return float(x)
-    except:
-        return default
 
-
-# -----------------------------
-# FAST FILTER (RELAXED - FIXED)
-# -----------------------------
 def fast_filter(df):
     try:
         if df is None or df.empty or len(df) < 2:
@@ -28,14 +17,12 @@ def fast_filter(df):
         volume = df["Volume"].values
 
         price_change = (close[-1] / close[-2]) - 1 if close[-2] != 0 else 0
-
         vol_avg = np.mean(volume[-20:]) if len(volume) >= 20 else np.mean(volume)
         vol_ratio = volume[-1] / vol_avg if vol_avg != 0 else 1
 
-        fast_score = (price_change * 100) + vol_ratio
+        score = (price_change * 100) + vol_ratio
 
-        # FIX: allow more tickers through
-        return fast_score if fast_score > -5 else None
+        return score if score > -5 else None
 
     except:
         return None
@@ -53,13 +40,13 @@ def rsi(close):
     gain = np.where(delta > 0, delta, 0)
     loss = np.where(delta < 0, -delta, 0)
 
-    avg_gain = np.mean(gain[-14:])
-    avg_loss = np.mean(loss[-14:])
+    ag = np.mean(gain[-14:])
+    al = np.mean(loss[-14:])
 
-    if avg_loss == 0:
+    if al == 0:
         return 100
 
-    rs = avg_gain / avg_loss
+    rs = ag / al
     return 100 - (100 / (1 + rs))
 
 
@@ -67,16 +54,14 @@ def volume_intensity(volume):
     v = arr(volume)
     if len(v) < 20:
         return 1.0
-    avg = np.mean(v[-20:])
-    return v[-1] / avg if avg != 0 else 1.0
+    return v[-1] / np.mean(v[-20:])
 
 
 def momentum(close):
     c = arr(close)
     if len(c) < 20:
         return 0.0
-    base = c[-10]
-    return (c[-1] / base - 1) if base != 0 else 0.0
+    return (c[-1] / c[-10] - 1) if c[-10] != 0 else 0.0
 
 
 def trend_strength(close):
@@ -84,14 +69,6 @@ def trend_strength(close):
     if len(c) < 30:
         return 0.0
     return (np.mean(c[-10:]) / np.mean(c[-30:])) - 1
-
-
-def volatility(close):
-    c = arr(close)
-    if len(c) < 20:
-        return 0.0
-    m = np.mean(c[-20:])
-    return np.std(c[-20:]) / m if m != 0 else 0.0
 
 
 def breakout(close):
@@ -102,7 +79,7 @@ def breakout(close):
 
 
 # -----------------------------
-# SQUEEZE ENGINE (FIXED)
+# SQUEEZE ENGINE
 # -----------------------------
 def squeeze_score(v, vol, br, m, t):
     score = 0.0
@@ -113,7 +90,6 @@ def squeeze_score(v, vol, br, m, t):
         score += 0.2
 
     score += min(vol * 0.5, 0.3)
-
     if br:
         score += 0.25
 
@@ -146,38 +122,32 @@ def score_stock(ticker):
         v = volume_intensity(volume)
         m = momentum(close)
         t = trend_strength(close)
-        vol = volatility(close)
         br = breakout(close)
 
-        squeeze = squeeze_score(v, vol, br, m, t)
+        squeeze = squeeze_score(v, 0.2, br, m, t)
 
         # -----------------------------
-        # BULL / BEAR MODEL (FIXED BALANCE)
+        # BULL / BEAR MODEL (STRONGER SEPARATION FIX)
         # -----------------------------
         bull = 0.5
         bear = 0.5
 
-        # RSI
         if r < 35:
-            bull += 0.12
+            bull += 0.15
         elif r > 65:
-            bear += 0.12
+            bear += 0.15
 
-        # momentum
-        bull += max(0, m * 0.5)
-        bear += max(0, -m * 0.5)
+        bull += max(0, m * 0.6)
+        bear += max(0, -m * 0.6)
 
-        # trend
-        bull += max(0, t * 0.4)
-        bear += max(0, -t * 0.4)
+        bull += max(0, t * 0.5)
+        bear += max(0, -t * 0.5)
 
-        # volume
         if v > 1.3:
-            bull += 0.08
+            bull += 0.1
 
-        # breakout
         if br:
-            bull += 0.12
+            bull += 0.15
 
         total = bull + bear
         bull /= total
@@ -186,28 +156,28 @@ def score_stock(ticker):
         confidence = abs(bull - bear)
 
         # -----------------------------
-        # SIGNAL FIX (LESS NEUTRAL, MORE ACTIONABLE)
+        # SIGNAL FIX (IMPORTANT)
         # -----------------------------
-        if bull - bear > 0.06:
+        if bull > 0.58:
             signal = "BULLISH"
-        elif bear - bull > 0.06:
+        elif bear > 0.58:
             signal = "BEARISH"
         else:
             signal = "NEUTRAL"
 
         # -----------------------------
-        # ALERTS (FIXED TRIGGERS)
+        # ALERTS (CLEAR LABELS)
         # -----------------------------
         alerts = []
 
-        if bull > 0.68:
-            alerts.append("🔥 HIGH_BULL_CONFIDENCE")
+        if bull >= 0.68:
+            alerts.append("BULL_CONFIDENCE")
 
-        if bear > 0.68:
-            alerts.append("🧨 HIGH_BEAR_CONFIDENCE")
+        if bear >= 0.68:
+            alerts.append("BEAR_CONFIDENCE")
 
-        if squeeze > 0.45:
-            alerts.append("🚀 HIGH_SQUEEZE_POTENTIAL")
+        if squeeze >= 0.45:
+            alerts.append("SQUEEZE")
 
         return {
             "ticker": ticker,
@@ -220,12 +190,7 @@ def score_stock(ticker):
             "squeeze_score": round(squeeze * 100, 1),
 
             "signal": signal,
-            "alerts": alerts,
-
-            "RSI": round(r, 2),
-            "volume": round(v, 2),
-            "momentum": round(m, 4),
-            "trend": round(t, 4)
+            "alerts": alerts
         }
 
     except:
