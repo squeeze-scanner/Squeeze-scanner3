@@ -1,5 +1,4 @@
 import random
-import time
 
 # -----------------------------
 # SECTOR UNIVERSE
@@ -22,7 +21,7 @@ SECTORS = {
 
     "MEME": [
         "GME","AMC","BB","KOSS","WISH","NOK","CLOV","MULN",
-        "FFIE","HKD","ATER","SAVA","WKHS","SPCE","NKLA"
+        "FFIE","ATER","SAVA","WKHS","SPCE","NKLA"
     ],
 
     "INDEX": [
@@ -45,29 +44,42 @@ SECTORS = {
 }
 
 # -----------------------------
-# FIXED SECTOR WEIGHTS (NO RANDOM DRIFT)
+# WEIGHTS
 # -----------------------------
 SECTOR_WEIGHTS = {
     "TECH": 1.2,
     "FINANCE": 1.0,
     "MOMENTUM": 1.3,
-    "MEME": 1.6,        # 🔥 core squeeze engine
+    "MEME": 1.6,
     "INDEX": 0.9,
     "DEFENSIVE": 0.8,
     "INTERNATIONAL": 1.0,
-    "HIGH_VOL": 1.7     # 🔥 volatility engine
+    "HIGH_VOL": 1.7
 }
 
+# -----------------------------
+# SESSION CACHE (V2 FIX)
+# -----------------------------
+_cached_universe = None
+
 
 # -----------------------------
-# UNIVERSE BUILDER (STABLE)
+# UNIVERSE BUILDER (V2 STABLE)
 # -----------------------------
 def get_universe(user_input=None, max_size=200):
+
+    global _cached_universe
+
+    # -----------------------------
+    # RETURN SAME UNIVERSE (STABILITY FIX)
+    # -----------------------------
+    if _cached_universe and not user_input:
+        return _cached_universe
 
     universe = []
 
     # -----------------------------
-    # WEIGHTED SECTOR SELECTION (DETERMINISTIC)
+    # WEIGHTED SECTOR BUILD (CONTROLLED RANDOMNESS)
     # -----------------------------
     for sector, tickers in SECTORS.items():
 
@@ -78,7 +90,12 @@ def get_universe(user_input=None, max_size=200):
 
         count = min(len(tickers), base + bonus)
 
-        selected = random.sample(tickers, k=count)
+        # deterministic shuffle seed per sector (stable output)
+        seeded = tickers.copy()
+        random.seed(sector)
+        random.shuffle(seeded)
+
+        selected = seeded[:count]
 
         universe.extend(selected)
 
@@ -95,7 +112,7 @@ def get_universe(user_input=None, max_size=200):
         universe.extend(manual * 3)
 
     # -----------------------------
-    # PRIORITY CORE TICKERS (ALWAYS PRESENT)
+    # CORE PRIORITY TICKERS
     # -----------------------------
     priority = [
         "TSLA","NVDA","AMD","PLTR","COIN","GME","AMC","HOOD","RIVN","SOFI",
@@ -105,11 +122,18 @@ def get_universe(user_input=None, max_size=200):
     universe.extend(priority)
 
     # -----------------------------
-    # CLEAN + DEDUPE
+    # CLEAN
     # -----------------------------
     universe = list(set(universe))
 
     # -----------------------------
-    # HARD SIZE LIMIT (PREVENT LAG)
+    # LIMIT
     # -----------------------------
-    return universe[:max_size]
+    universe = universe[:max_size]
+
+    # -----------------------------
+    # CACHE RESULT (V2 STABILITY)
+    # -----------------------------
+    _cached_universe = universe
+
+    return universe
