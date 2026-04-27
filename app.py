@@ -3,7 +3,7 @@ import time
 from scanner import check_signal
 from telegram import send_alert
 
-st.title("🚀 V3.2 Execution Engine (FIXED STATE)")
+st.title("🚀 V4 Execution Engine (STABLE CORE)")
 
 # -----------------------------
 # INPUTS
@@ -35,13 +35,16 @@ def merge_universe(user_input):
     return list(set(universe))
 
 # -----------------------------
-# STATE
+# STATE (V4 CORE FIX)
 # -----------------------------
 if "cache" not in st.session_state:
     st.session_state.cache = []
 
 if "last_alert" not in st.session_state:
     st.session_state.last_alert = {}
+
+if "last_state" not in st.session_state:
+    st.session_state.last_state = {}
 
 if "last_run" not in st.session_state:
     st.session_state.last_run = 0
@@ -69,8 +72,8 @@ if start:
                 res = check_signal(t)
                 if res:
                     results.append(res)
-            except Exception as e:
-                print("[SCAN ERROR]", t, e)
+            except:
+                continue
 
         results.sort(key=lambda x: x.get("score", 0), reverse=True)
 
@@ -92,7 +95,7 @@ if start:
 
         st.dataframe(results)
 
-        st.subheader("🚀 V3 EXECUTION ENGINE")
+        st.subheader("🚀 V4 EXECUTION ENGINE")
 
         for r in results:
 
@@ -102,20 +105,31 @@ if start:
             setup = r.get("setup_score", 0)
             squeeze = r.get("squeeze_score", 0)
 
-            # ✅ FIXED KEY HERE
             trade = r.get("trade_plan", {})
 
-            entry = trade.get("entry", (0, 0))
-            entry_low = entry[0]
-            entry_high = entry[1]
-
+            entry_low, entry_high = trade.get("entry", (0, 0))
             stop = trade.get("stop", 0)
             t1 = trade.get("target1", 0)
             t2 = trade.get("target2", 0)
             rr = trade.get("rr", 0)
 
+            # -----------------------------
+            # STATE MEMORY (CRITICAL FIX)
+            # -----------------------------
+            prev_state = st.session_state.last_state.get(ticker, "NONE")
+
+            if entry_low <= price <= entry_high:
+                state = "ENTRY"
+            elif price > entry_high and entry_high > 0:
+                state = "BREAKOUT"
+            else:
+                state = "WAITING"
+
+            st.session_state.last_state[ticker] = state
+
             msg = (
                 f"{ticker} | ${price}\n"
+                f"STATE {state}\n"
                 f"ENTRY {entry_low}-{entry_high}\n"
                 f"STOP {stop} | T1 {t1} | T2 {t2}\n"
                 f"RR {rr} | Setup {setup}% | Squeeze {squeeze}%"
@@ -124,31 +138,23 @@ if start:
             last_time = st.session_state.last_alert.get(ticker, 0)
 
             # -----------------------------
-            # CLEAN ALERT LOGIC
+            # ALERT CONDITIONS (V4 CLEAN)
             # -----------------------------
-            is_entry = entry_low <= price <= entry_high
-            is_breakout = price > entry_high and entry_high > 0
+            is_new_state = state != prev_state
 
             is_strong = setup >= 60 and squeeze >= 50
             is_extreme = setup >= 80 and rr >= 1.3
 
             should_alert = (
-                is_extreme or
-                (is_strong and is_entry) or
-                is_breakout
-            )
-
-            # DEBUG
-            st.write(
-                ticker,
-                "| entry:", is_entry,
-                "| breakout:", is_breakout,
-                "| extreme:", is_extreme,
-                "| alert:", should_alert
+                is_new_state and (
+                    is_extreme or
+                    (is_strong and state == "ENTRY") or
+                    state == "BREAKOUT"
+                )
             )
 
             # -----------------------------
-            # ALERT
+            # ALERT EXECUTION
             # -----------------------------
             if should_alert and now - last_time > cooldown:
 
@@ -156,7 +162,7 @@ if start:
                     alert_msg = "🔥 EXTREME SETUP: " + msg
                     st.error(alert_msg)
 
-                elif is_breakout:
+                elif state == "BREAKOUT":
                     alert_msg = "🚀 BREAKOUT ALERT: " + msg
                     st.warning(alert_msg)
 
@@ -164,7 +170,9 @@ if start:
                     alert_msg = "⚡ ENTRY ALERT: " + msg
                     st.success(alert_msg)
 
-                send_alert(alert_msg)
+                result = send_alert(alert_msg)
+
+                st.write("📡 TELEGRAM:", result)
 
                 st.session_state.last_alert[ticker] = now
 
