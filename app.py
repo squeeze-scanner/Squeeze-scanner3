@@ -3,7 +3,7 @@ import time
 from scanner import check_signal
 from telegram import send_alert
 
-st.title("🚀 V2 Squeeze Radar (EXECUTION ENGINE FIXED)")
+st.title("🚀 V2 Squeeze Radar (Execution Engine FIXED)")
 
 # -----------------------------
 # INPUTS
@@ -83,10 +83,9 @@ if start:
                 res = check_signal(t)
                 if res:
                     results.append(res)
-            except Exception as e:
-                print("[APP ERROR]", t, e)
+            except:
+                continue
 
-        # sort by real execution score
         results.sort(key=lambda x: x.get("score", 0), reverse=True)
 
         st.session_state.cache = results
@@ -106,7 +105,7 @@ if start:
 
             st.dataframe(results)
 
-            st.subheader("🚀 V2 EXECUTION SIGNALS")
+            st.subheader("🚀 V2 TRADE EXECUTION SIGNALS")
 
             for r in results:
 
@@ -118,15 +117,15 @@ if start:
                 setup = r.get("setup_score", 0)
                 alerts = r.get("alerts", [])
 
+                # 🔥 FIX: correct key is "trade"
                 trade = r.get("trade") or {}
 
-                trade_type = trade.get("type", "WAITING")
                 rr = trade.get("rr", 0)
-
                 entry = trade.get("entry", (0, 0))
                 stop = trade.get("stop", 0)
                 t1 = trade.get("target1", 0)
                 t2 = trade.get("target2", 0)
+                trade_type = trade.get("type", "UNKNOWN")
 
                 msg = (
                     f"{ticker} | {signal} | ${price}\n"
@@ -139,37 +138,33 @@ if start:
                 last_time = st.session_state.last_alert.get(ticker, 0)
 
                 # -----------------------------
-                # FIXED ALERT LOGIC (V2 STABLE)
+                # FIXED EXECUTION LOGIC
                 # -----------------------------
-                is_extreme = setup >= 80 and rr >= 1.5
-                is_strong = setup >= 65 and squeeze >= 55
-                has_signal = len(alerts) > 0
-                is_breakout = "BREAKOUT" in trade_type or "SQUEEZE" in trade_type
+                is_high_quality = setup >= 65 and squeeze >= 55 and rr >= 1.2
+                is_extreme = setup >= 80 and rr >= 1.5 and squeeze >= 60
+                is_breakout = rr >= 1.6 and squeeze >= 60
 
                 is_alert = (
                     is_extreme or
-                    is_strong or
-                    has_signal or
-                    (is_breakout and rr >= 1.3)
+                    is_high_quality or
+                    is_breakout
                 )
-
-                # DEBUG (keep ON for now)
-                st.write(f"DEBUG {ticker} | setup={setup} rr={rr} type={trade_type}")
 
                 if is_alert:
 
                     if ticker not in st.session_state.alerted and now - last_time > cooldown:
 
                         if is_extreme:
-                            alert_msg = "🔥 EXTREME EXECUTION: " + msg
+                            alert_msg = "🔥 EXTREME EXECUTION SETUP: " + msg
                             st.error(alert_msg)
-                        else:
-                            alert_msg = "⚡ EXECUTION ALERT: " + msg
+                        elif is_breakout:
+                            alert_msg = "⚡ BREAKOUT SETUP: " + msg
                             st.warning(alert_msg)
+                        else:
+                            alert_msg = "📈 HIGH QUALITY SETUP: " + msg
+                            st.info(alert_msg)
 
-                        # IMPORTANT: ensure Telegram result is visible
-                        success = send_alert(alert_msg)
-                        print("TELEGRAM SENT:", success)
+                        send_alert(alert_msg)
 
                         st.session_state.alerted.add(ticker)
                         st.session_state.last_alert[ticker] = now
@@ -196,7 +191,7 @@ if start:
                     f"{r.get('ticker')} | {r.get('signal')} | "
                     f"${r.get('price')} | "
                     f"RR {trade.get('rr', 0)} | "
-                    f"TYPE {trade.get('type', 'WAITING')}"
+                    f"TYPE {trade.get('type', 'UNKNOWN')}"
                 )
 
         else:
