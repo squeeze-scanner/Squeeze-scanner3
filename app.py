@@ -6,7 +6,7 @@ from telegram import send_alert
 # -----------------------------
 # TITLE
 # -----------------------------
-st.title("🚀 V23 Squeeze Radar (Full Market + Short Data)")
+st.title("🚀 V23 Squeeze Radar (Optimized Engine)")
 
 # -----------------------------
 # USER INPUT
@@ -16,7 +16,7 @@ user_tickers = st.text_input(
     "GME,AMC,TSLA"
 )
 
-refresh_rate = st.slider("Refresh interval (seconds)", 5, 60, 10)
+refresh_rate = st.slider("Refresh interval (seconds)", 5, 60, 15)
 start = st.toggle("🟢 Start Scanner")
 
 # -----------------------------
@@ -73,22 +73,39 @@ if start:
 
     now = time.time()
 
-    # throttle scans
+    # -----------------------------
+    # THROTTLED SCAN
+    # -----------------------------
     if now - st.session_state.last_run >= refresh_rate:
 
-        tickers = merge_universe(user_tickers)
+        tickers = merge_universe(user_tickers)[:120]  # 🔥 HARD LIMIT
 
-        results = []
+        fast_candidates = []
 
         for t in tickers:
             try:
                 res = check_signal(t)
-                if res:
-                    results.append(res)
+
+                if not res:
+                    continue
+
+                # 🔥 EARLY FILTER (Fix #3)
+                score = res.get("score", 0)
+
+                if score < 40:
+                    continue
+
+                fast_candidates.append(res)
+
             except:
                 continue
 
-        results.sort(key=lambda x: x.get("score", 0), reverse=True)
+        # 🔥 KEEP ONLY BEST 50
+        results = sorted(
+            fast_candidates,
+            key=lambda x: x.get("score", 0),
+            reverse=True
+        )[:50]
 
         st.session_state.cache = results
         st.session_state.last_run = now
@@ -103,10 +120,11 @@ if start:
         st.subheader("📊 Market Radar")
 
         st.write(f"Scanning {len(merge_universe(user_tickers))} tickers")
+        st.write(f"⚡ Active candidates: {len(results)}")
 
         if results:
 
-            # FULL TABLE
+            # TABLE
             st.dataframe(results)
 
             st.subheader("🚨 Alerts")
@@ -125,9 +143,6 @@ if start:
 
                 last_time = st.session_state.last_alert.get(ticker, 0)
 
-                # -----------------------------
-                # ALERT LOGIC (NO SPAM)
-                # -----------------------------
                 if signal == "HIGH":
 
                     if (
@@ -162,6 +177,7 @@ if start:
         else:
             st.info("Scanning market...")
 
-    # light refresh loop
-    time.sleep(1)
+    # -----------------------------
+    # FAST REFRESH (NO SLEEP LAG)
+    # -----------------------------
     st.rerun()
