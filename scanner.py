@@ -2,6 +2,9 @@ import numpy as np
 import yfinance as yf
 
 
+# -----------------------------
+# HELPERS
+# -----------------------------
 def arr(x):
     return np.array(x).reshape(-1)
 
@@ -13,6 +16,38 @@ def safe(x, default=0.0):
         return float(x)
     except:
         return default
+
+
+# -----------------------------
+# FAST FILTER (NEW — IMPORTANT)
+# -----------------------------
+def fast_filter(ticker):
+    """
+    Lightweight pre-screen to avoid wasting full scans
+    """
+    try:
+        t = yf.Ticker(ticker)
+        df = t.history(period="5d", interval="1d")
+
+        if df is None or df.empty or len(df) < 2:
+            return None
+
+        close = df["Close"].values
+        volume = df["Volume"].values
+
+        price_change = (close[-1] / close[-2]) - 1 if close[-2] != 0 else 0
+        vol_ratio = volume[-1] / (np.mean(volume) if np.mean(volume) != 0 else 1)
+
+        fast_score = (price_change * 100) + vol_ratio
+
+        # reject dead tickers early
+        if fast_score < 1.5:
+            return None
+
+        return fast_score
+
+    except:
+        return None
 
 
 # -----------------------------
@@ -105,7 +140,7 @@ def breakout(close):
 
 
 # -----------------------------
-# CORE SCORING ENGINE
+# CORE ENGINE
 # -----------------------------
 def score_stock(stock):
 
@@ -177,11 +212,3 @@ def score_stock(stock):
 
 
 # -----------------------------
-# PUBLIC CALL
-# -----------------------------
-def check_signal(ticker):
-    try:
-        stock = yf.Ticker(ticker)
-        return score_stock(stock)
-    except:
-        return None
