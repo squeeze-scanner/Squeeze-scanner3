@@ -8,7 +8,6 @@ from telegram import send_alert
 # -----------------------------
 st.title("🚀 V27 Squeeze Radar (Predictive Engine)")
 
-
 # -----------------------------
 # INPUT
 # -----------------------------
@@ -21,9 +20,8 @@ refresh_rate = st.slider("Refresh interval (seconds)", 5, 60, 10)
 scan_size = st.slider("📊 Max tickers to scan", 10, 150, 50)
 start = st.toggle("🟢 Start Scanner")
 
-
 # -----------------------------
-# UNIVERSE (CACHED)
+# UNIVERSE
 # -----------------------------
 @st.cache_data(ttl=300)
 def get_full_universe():
@@ -69,7 +67,6 @@ if "alerted" not in st.session_state:
 
 cooldown = 600
 
-
 # -----------------------------
 # MAIN ENGINE
 # -----------------------------
@@ -98,7 +95,6 @@ if start:
 
     results = st.session_state.cache
 
-
     # -----------------------------
     # UI
     # -----------------------------
@@ -121,31 +117,38 @@ if start:
             squeeze = r.get("squeeze_score", 0)
             bull = r.get("bull_prob", 0)
             bear = r.get("bear_prob", 0)
-
-            alert_tags = r.get("alerts", [])
+            alerts = r.get("alerts", [])
 
             # -----------------------------
-            # BUILD MESSAGE (FIXED)
+            # PRIORITY CLASSIFICATION (IMPORTANT FIX)
+            # -----------------------------
+            if "HIGH_SQUEEZE_POTENTIAL" in alerts:
+                alert_type = "🚀 SQUEEZE"
+
+            elif "HIGH_BULL_CONFIDENCE" in alerts:
+                alert_type = "🐂 BULLISH"
+
+            elif "HIGH_BEAR_CONFIDENCE" in alerts:
+                alert_type = "🐻 BEARISH"
+
+            else:
+                alert_type = None
+
+            # -----------------------------
+            # MESSAGE FORMAT
             # -----------------------------
             msg = (
-                f"{ticker} | {signal} | ${price}\n"
+                f"{ticker} | {alert_type or signal} | ${price}\n"
                 f"Bull {bull}% | Bear {bear}%\n"
-                f"Squeeze {squeeze}%\n"
-                f"Alerts: {', '.join(alert_tags) if alert_tags else 'None'}"
+                f"Squeeze {squeeze}%"
             )
 
             last_time = st.session_state.last_alert.get(ticker, 0)
 
             # -----------------------------
-            # ALERT TRIGGER LOGIC (FIXED)
+            # ALERT TRIGGER
             # -----------------------------
-            should_alert = (
-                "HIGH_BULL_CONFIDENCE" in alert_tags or
-                "HIGH_BEAR_CONFIDENCE" in alert_tags or
-                "HIGH_SQUEEZE_POTENTIAL" in alert_tags
-            )
-
-            if should_alert:
+            if alert_type:
 
                 if ticker not in st.session_state.alerted and now - last_time > cooldown:
 
@@ -153,20 +156,18 @@ if start:
 
                     success = send_alert("🔥 " + msg)
 
-                    # only mark if Telegram succeeds
                     if success:
                         st.session_state.alerted.add(ticker)
                         st.session_state.last_alert[ticker] = now
 
-            elif signal == "BULLISH":
-                st.success(msg)
-
-            elif signal == "BEARISH":
-                st.warning(msg)
-
             else:
-                st.info(msg)
-
+                # normal display
+                if signal == "BULLISH":
+                    st.success(msg)
+                elif signal == "BEARISH":
+                    st.warning(msg)
+                else:
+                    st.info(msg)
 
         # -----------------------------
         # TOP 10
