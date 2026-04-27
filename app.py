@@ -127,4 +127,4 @@ if start:
                 if signal == "HIGH":
 
                     if now - last_time > cooldown:
-                        st.error("🔥 " + msg
+                        st.error("🔥 " + msg)
