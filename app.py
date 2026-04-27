@@ -4,7 +4,7 @@ import numpy as np
 from scanner import check_signal
 from telegram import send_alert
 
-st.title("🚀 V23 Squeeze Radar (FULL TRADE SETUP ENGINE)")
+st.title("🚀 V23 Squeeze Radar (FULL TRADE ENGINE)")
 
 # -----------------------------
 # INPUTS
@@ -16,7 +16,6 @@ user_tickers = st.text_input(
 
 refresh_rate = st.slider("Refresh interval (seconds)", 5, 60, 15)
 start = st.toggle("🟢 Start Scanner")
-
 
 # -----------------------------
 # UNIVERSE
@@ -43,68 +42,6 @@ def merge_universe(user_input):
         universe.extend(manual)
 
     return list(set(universe))
-
-
-# -----------------------------
-# TRADE ENGINE (NEW CORE)
-# -----------------------------
-def build_trade_setup(r):
-
-    price = r.get("price", 0)
-    squeeze = r.get("squeeze_score", 0)
-    bull = r.get("bull_prob", 50)
-    bear = r.get("bear_prob", 50)
-
-    direction = "LONG" if bull > bear else "SHORT"
-
-    # ---------------- ENTRY
-    if direction == "LONG":
-        entry = price * (1 + (0.002 * (100 - squeeze) / 100))
-    else:
-        entry = price * (1 - (0.002 * (100 - squeeze) / 100))
-
-    # ---------------- STOP LOSS (volatility proxy)
-    stop_distance = price * (0.01 + (squeeze / 1000))  # adaptive risk
-
-    if direction == "LONG":
-        stop = price - stop_distance
-        target1 = price + (stop_distance * 1.5)
-        target2 = price + (stop_distance * 3)
-    else:
-        stop = price + stop_distance
-        target1 = price - (stop_distance * 1.5)
-        target2 = price - (stop_distance * 3)
-
-    # ---------------- RISK / REWARD
-    risk = abs(price - stop)
-    reward = abs(target2 - price)
-    rr = reward / risk if risk != 0 else 0
-
-    # ---------------- QUALITY SCORE
-    setup_score = (
-        squeeze * 0.4 +
-        max(bull, bear) * 0.4 +
-        (rr * 10)
-    )
-
-    if setup_score > 70:
-        quality = "A+ SETUP"
-    elif setup_score > 55:
-        quality = "A SETUP"
-    elif setup_score > 40:
-        quality = "B SETUP"
-    else:
-        quality = "C SETUP"
-
-    return {
-        "direction": direction,
-        "entry": round(entry, 2),
-        "stop": round(stop, 2),
-        "target_1": round(target1, 2),
-        "target_2": round(target2, 2),
-        "rr": round(rr, 2),
-        "quality": quality
-    }
 
 
 # -----------------------------
@@ -154,6 +91,9 @@ if start:
 
     results = st.session_state.cache
 
+    # -----------------------------
+    # UI
+    # -----------------------------
     with placeholder.container():
 
         st.subheader("📊 Market Radar")
@@ -163,40 +103,62 @@ if start:
 
             st.dataframe(results)
 
-            st.subheader("🚀 Trade Setups (NEW ENGINE)")
+            st.subheader("🚀 TRADE SETUPS (LEVEL UP ENGINE)")
 
             for r in results:
 
-                setup = build_trade_setup(r)
-
                 ticker = r.get("ticker")
-                price = r.get("price")
+                signal = r.get("signal", "NEUTRAL")
+                price = r.get("price", 0)
+
+                squeeze = r.get("squeeze_score", 0)
+                bull = r.get("bull_prob", 0)
+                bear = r.get("bear_prob", 0)
+                rr = r.get("trade_plan", {}).get("rr", 0)
+
+                trade = r.get("trade_plan", {})
+
+                entry = trade.get("entry", (0, 0))
+                stop = trade.get("stop", 0)
+                t1 = trade.get("target1", 0)
+                t2 = trade.get("target2", 0)
+                setup_type = trade.get("type", "UNKNOWN")
 
                 msg = (
-                    f"{ticker} | {setup['direction']} | {setup['quality']}\n"
-                    f"Entry {setup['entry']} | Stop {setup['stop']}\n"
-                    f"TP1 {setup['target_1']} | TP2 {setup['target_2']}\n"
-                    f"R:R {setup['rr']}"
+                    f"{ticker} | {signal} | ${price}\n"
+                    f"Entry {entry} | Stop {stop}\n"
+                    f"T1 {t1} | T2 {t2} | RR {rr}\n"
+                    f"Bull {bull}% | Bear {bear}% | Squeeze {squeeze}%"
                 )
-
-                score = r.get("squeeze_score", 0)
-
-                is_extreme = score > 70 or setup["rr"] > 3
 
                 last_time = st.session_state.last_alert.get(ticker, 0)
 
-                if is_extreme and now - last_time > cooldown:
+                # -----------------------------
+                # UPDATED ALERT CONDITIONS (RR INCLUDED)
+                # -----------------------------
+                is_high_quality = rr >= 1.5 and squeeze >= 60
+                is_extreme = rr >= 2.0 and bull >= 75
 
-                    st.error("🔥 TRADE SETUP: " + msg)
-                    send_alert("🔥 TRADE SETUP: " + msg)
+                is_alert = is_high_quality or is_extreme
 
-                    st.session_state.alerted.add(ticker)
-                    st.session_state.last_alert[ticker] = now
+                if is_alert:
 
-                elif setup["quality"] in ["A+", "A"]:
+                    if ticker not in st.session_state.alerted and now - last_time > cooldown:
+
+                        if is_extreme:
+                            st.error("🔥 EXTREME TRADE SETUP: " + msg)
+                            send_alert("🔥 EXTREME TRADE SETUP: " + msg)
+                        else:
+                            st.warning("⚡ HIGH QUALITY SETUP: " + msg)
+                            send_alert("⚡ HIGH QUALITY SETUP: " + msg)
+
+                        st.session_state.alerted.add(ticker)
+                        st.session_state.last_alert[ticker] = now
+
+                elif signal == "BULLISH":
                     st.success(msg)
 
-                elif setup["quality"] == "B SETUP":
+                elif signal == "BEARISH":
                     st.warning(msg)
 
                 else:
@@ -205,11 +167,14 @@ if start:
             st.subheader("🏆 Top 10 Candidates")
 
             for r in results[:10]:
-                setup = build_trade_setup(r)
+
+                trade = r.get("trade_plan", {})
 
                 st.write(
-                    f"{r.get('ticker')} | {setup['quality']} | "
-                    f"${r.get('price')} | R:R {setup['rr']}"
+                    f"{r.get('ticker')} | {r.get('signal')} | "
+                    f"${r.get('price')} | "
+                    f"RR {trade.get('rr', 0)} | "
+                    f"T1 {trade.get('target1', 0)}"
                 )
 
         else:
