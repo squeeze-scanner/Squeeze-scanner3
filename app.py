@@ -3,7 +3,7 @@ import time
 from scanner import check_signal
 from telegram import send_alert
 
-st.title("🚀 V2 Squeeze Radar (Execution Engine FIXED)")
+st.title("🚀 V3 Execution Engine (LIVE TRADE TRACKER)")
 
 # -----------------------------
 # INPUTS
@@ -13,41 +13,37 @@ user_tickers = st.text_input(
     "GME,AMC,TSLA"
 )
 
-refresh_rate = st.slider("Refresh interval (seconds)", 5, 60, 15)
-start = st.toggle("🟢 Start Scanner")
+refresh_rate = st.slider("Refresh interval (seconds)", 5, 60, 10)
+start = st.toggle("🟢 Start Engine")
 
 # -----------------------------
 # UNIVERSE
 # -----------------------------
 def get_full_universe():
-    base = [
+    return [
         "AAPL","MSFT","NVDA","AMZN","META","GOOGL","TSLA","JPM",
-        "V","XOM","PG","MA","HD","CVX","PEP","KO","WMT","BAC"
-    ]
-
-    momentum = [
+        "V","XOM","PG","MA","HD","CVX","PEP","KO","WMT","BAC",
         "PLTR","GME","AMC","BB","NIO","SOFI","RIVN","LCID",
         "AMD","INTC","PYPL","UBER","SQ","SHOP","BABA"
     ]
 
-    return list(set(base + momentum))
-
 
 def merge_universe(user_input):
     universe = get_full_universe()
-
     if user_input:
         manual = [t.strip().upper() for t in user_input.split(",") if t.strip()]
         universe.extend(manual)
-
     return list(set(universe))
 
 
 # -----------------------------
-# STATE
+# STATE (V3 TRADING MEMORY)
 # -----------------------------
 if "cache" not in st.session_state:
     st.session_state.cache = []
+
+if "active_trades" not in st.session_state:
+    st.session_state.active_trades = {}
 
 if "last_run" not in st.session_state:
     st.session_state.last_run = 0
@@ -55,27 +51,23 @@ if "last_run" not in st.session_state:
 if "last_alert" not in st.session_state:
     st.session_state.last_alert = {}
 
-if "alerted" not in st.session_state:
-    st.session_state.alerted = set()
-
-cooldown = 600
+cooldown = 300
 placeholder = st.empty()
 
 
 # -----------------------------
-# MAIN LOOP
+# MAIN ENGINE
 # -----------------------------
 if start:
 
     now = time.time()
 
     # -----------------------------
-    # SCAN ENGINE
+    # SCAN
     # -----------------------------
     if now - st.session_state.last_run >= refresh_rate:
 
         tickers = merge_universe(user_tickers)[:120]
-
         results = []
 
         for t in tickers:
@@ -99,100 +91,112 @@ if start:
     with placeholder.container():
 
         st.subheader("📊 Market Radar")
-        st.write(f"Active tickers: {len(results)}")
 
-        if results:
-
-            st.dataframe(results)
-
-            st.subheader("🚀 V2 TRADE EXECUTION SIGNALS")
-
-            for r in results:
-
-                ticker = r.get("ticker")
-                signal = r.get("signal", "NEUTRAL")
-                price = r.get("price", 0)
-
-                squeeze = r.get("squeeze_score", 0)
-                setup = r.get("setup_score", 0)
-                alerts = r.get("alerts", [])
-
-                # 🔥 FIX: correct key is "trade"
-                trade = r.get("trade") or {}
-
-                rr = trade.get("rr", 0)
-                entry = trade.get("entry", (0, 0))
-                stop = trade.get("stop", 0)
-                t1 = trade.get("target1", 0)
-                t2 = trade.get("target2", 0)
-                trade_type = trade.get("type", "UNKNOWN")
-
-                msg = (
-                    f"{ticker} | {signal} | ${price}\n"
-                    f"TYPE: {trade_type}\n"
-                    f"Entry {entry} | Stop {stop}\n"
-                    f"T1 {t1} | T2 {t2} | RR {rr}\n"
-                    f"Setup {setup}% | Squeeze {squeeze}%"
-                )
-
-                last_time = st.session_state.last_alert.get(ticker, 0)
-
-                # -----------------------------
-                # FIXED EXECUTION LOGIC
-                # -----------------------------
-                is_high_quality = setup >= 65 and squeeze >= 55 and rr >= 1.2
-                is_extreme = setup >= 80 and rr >= 1.5 and squeeze >= 60
-                is_breakout = rr >= 1.6 and squeeze >= 60
-
-                is_alert = (
-                    is_extreme or
-                    is_high_quality or
-                    is_breakout
-                )
-
-                if is_alert:
-
-                    if ticker not in st.session_state.alerted and now - last_time > cooldown:
-
-                        if is_extreme:
-                            alert_msg = "🔥 EXTREME EXECUTION SETUP: " + msg
-                            st.error(alert_msg)
-                        elif is_breakout:
-                            alert_msg = "⚡ BREAKOUT SETUP: " + msg
-                            st.warning(alert_msg)
-                        else:
-                            alert_msg = "📈 HIGH QUALITY SETUP: " + msg
-                            st.info(alert_msg)
-
-                        send_alert(alert_msg)
-
-                        st.session_state.alerted.add(ticker)
-                        st.session_state.last_alert[ticker] = now
-
-                elif signal == "BULLISH":
-                    st.success(msg)
-
-                elif signal == "BEARISH":
-                    st.warning(msg)
-
-                else:
-                    st.info(msg)
-
-            # -----------------------------
-            # TOP 10
-            # -----------------------------
-            st.subheader("🏆 Top 10 Execution Candidates")
-
-            for r in results[:10]:
-
-                trade = r.get("trade") or {}
-
-                st.write(
-                    f"{r.get('ticker')} | {r.get('signal')} | "
-                    f"${r.get('price')} | "
-                    f"RR {trade.get('rr', 0)} | "
-                    f"TYPE {trade.get('type', 'UNKNOWN')}"
-                )
-
-        else:
+        if not results:
             st.info("Scanning market...")
+            st.stop()
+
+        st.dataframe(results)
+
+        st.subheader("🚀 V3 LIVE TRADE ENGINE")
+
+        for r in results:
+
+            ticker = r["ticker"]
+            price = r["price"]
+            setup = r.get("setup_score", 0)
+            squeeze = r.get("squeeze_score", 0)
+            trade = r.get("trade") or {}
+
+            entry_low, entry_high = trade.get("entry", (0, 0))
+            stop = trade.get("stop", 0)
+            t1 = trade.get("target1", 0)
+            t2 = trade.get("target2", 0)
+
+            rr = trade.get("rr", 0)
+
+            # -----------------------------
+            # CURRENT STATE
+            # -----------------------------
+            state = st.session_state.active_trades.get(ticker, "WATCHING")
+
+            msg = (
+                f"{ticker} | ${price}\n"
+                f"STATE: {state}\n"
+                f"ENTRY {entry_low}-{entry_high}\n"
+                f"STOP {stop} | T1 {t1} | T2 {t2}\n"
+                f"RR {rr} | Setup {setup}% | Squeeze {squeeze}%"
+            )
+
+            last_time = st.session_state.last_alert.get(ticker, 0)
+
+            # -----------------------------
+            # ENTRY LOGIC
+            # -----------------------------
+            if state == "WATCHING":
+
+                if entry_low <= price <= entry_high:
+
+                    st.session_state.active_trades[ticker] = "IN_TRADE"
+
+                    alert_msg = "🔥 ENTRY FILLED: " + msg
+                    st.success(alert_msg)
+                    send_alert(alert_msg)
+
+                    st.session_state.last_alert[ticker] = now
+
+            # -----------------------------
+            # ACTIVE TRADE MANAGEMENT
+            # -----------------------------
+            elif state == "IN_TRADE":
+
+                # STOP HIT
+                if price <= stop:
+                    st.session_state.active_trades[ticker] = "STOPPED"
+
+                    alert_msg = "🛑 STOP LOSS HIT: " + msg
+                    st.error(alert_msg)
+                    send_alert(alert_msg)
+
+                # TARGET 1
+                elif price >= t1 and price < t2:
+                    st.session_state.active_trades[ticker] = "TARGET_1"
+
+                    alert_msg = "🎯 TARGET 1 HIT: " + msg
+                    st.warning(alert_msg)
+                    send_alert(alert_msg)
+
+                # TARGET 2
+                elif price >= t2:
+                    st.session_state.active_trades[ticker] = "TARGET_2"
+
+                    alert_msg = "🚀 TARGET 2 HIT (FULL WIN): " + msg
+                    st.success(alert_msg)
+                    send_alert(alert_msg)
+
+            # -----------------------------
+            # DISPLAY
+            # -----------------------------
+            if state == "WATCHING":
+                st.info(msg)
+            elif state == "IN_TRADE":
+                st.warning(msg)
+            elif state == "TARGET_2":
+                st.success(msg)
+            elif state == "STOPPED":
+                st.error(msg)
+            else:
+                st.info(msg)
+
+        # -----------------------------
+        # TOP 10
+        # -----------------------------
+        st.subheader("🏆 Top 10 Opportunities")
+
+        for r in results[:10]:
+            trade = r.get("trade") or {}
+            st.write(
+                f"{r['ticker']} | ${r['price']} | "
+                f"RR {trade.get('rr', 0)} | "
+                f"STATE {st.session_state.active_trades.get(r['ticker'], 'WATCHING')}"
+            )
