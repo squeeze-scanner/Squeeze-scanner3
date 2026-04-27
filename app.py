@@ -6,10 +6,10 @@ from telegram import send_alert
 # -----------------------------
 # TITLE
 # -----------------------------
-st.title("🚀 V24 Squeeze Radar (Optimized Engine)")
+st.title("🚀 V27 Squeeze Radar (Predictive Engine)")
 
 # -----------------------------
-# USER INPUT
+# INPUT
 # -----------------------------
 user_tickers = st.text_input(
     "➕ Add extra tickers (comma separated)",
@@ -17,10 +17,7 @@ user_tickers = st.text_input(
 )
 
 refresh_rate = st.slider("Refresh interval (seconds)", 5, 60, 10)
-
-# 🔥 NEW: control scan size
 scan_size = st.slider("📊 Max tickers to scan", 10, 150, 50)
-
 start = st.toggle("🟢 Start Scanner")
 
 # -----------------------------
@@ -53,7 +50,7 @@ def merge_universe(user_input):
 
 
 # -----------------------------
-# SESSION STATE
+# STATE
 # -----------------------------
 if "cache" not in st.session_state:
     st.session_state.cache = []
@@ -77,29 +74,20 @@ if start:
 
     now = time.time()
 
-    # throttle scans
     if now - st.session_state.last_run >= refresh_rate:
 
-        tickers = merge_universe(user_tickers)
-
-        # 🔥 LIMIT SCAN SIZE (CRITICAL FIX)
-        tickers = tickers[:scan_size]
+        tickers = merge_universe(user_tickers)[:scan_size]
 
         results = []
 
         for t in tickers:
             try:
                 res = check_signal(t)
+                if res:
+                    results.append(res)
+            except:
+                continue
 
-                if res is None:
-                    continue
-
-                results.append(res)
-
-            except Exception as e:
-                st.write(f"❌ {t} failed")
-
-        # sort
         results.sort(key=lambda x: x.get("score", 0), reverse=True)
 
         st.session_state.cache = results
@@ -114,41 +102,34 @@ if start:
 
         st.subheader("📊 Market Radar")
 
-        st.write(f"Scanning {len(results)} active tickers")
+        st.write(f"Universe size: {len(merge_universe(user_tickers))}")
+        st.write(f"Scanning: {scan_size} tickers")
 
         if results:
 
-            # ✅ SAFE TABLE (no crashes)
             st.dataframe(results)
 
             st.subheader("🚨 Alerts")
 
             for r in results:
 
-                ticker = r.get("ticker", "N/A")
-                signal = r.get("signal", "LOW")
-                score = r.get("score", 0)
-                price = r.get("price", "N/A")
+                ticker = r.get("ticker")
+                signal = r.get("signal")
+                score = r.get("score")
+                price = r.get("price")
 
-                short_pct = r.get("short_%", "N/A")
-                dtc = r.get("days_to_cover", "N/A")
+                squeeze = r.get("squeeze_pressure", 0)
 
                 msg = (
                     f"{ticker} | {signal} | Score {score} | ${price} | "
-                    f"Short {short_pct}% | DTC {dtc}"
+                    f"Squeeze {squeeze}%"
                 )
 
                 last_time = st.session_state.last_alert.get(ticker, 0)
 
-                # -----------------------------
-                # ALERT LOGIC (NO SPAM)
-                # -----------------------------
                 if signal == "HIGH":
 
-                    if (
-                        ticker not in st.session_state.alerted
-                        and now - last_time > cooldown
-                    ):
+                    if ticker not in st.session_state.alerted and now - last_time > cooldown:
                         st.error("🔥 " + msg)
                         send_alert("🔥 " + msg)
 
@@ -161,22 +142,17 @@ if start:
                 else:
                     st.info(msg)
 
-            # -----------------------------
-            # TOP 10
-            # -----------------------------
-            st.subheader("🏆 Top 10 Squeeze Candidates")
+            st.subheader("🏆 Top 10 Candidates")
 
             for r in results[:10]:
                 st.write(
                     f"{r.get('ticker')} → {r.get('signal')} | "
                     f"${r.get('price')} | Score {r.get('score')} | "
-                    f"Short {r.get('short_%', 'N/A')}% | "
-                    f"DTC {r.get('days_to_cover', 'N/A')}"
+                    f"Squeeze {r.get('squeeze_pressure', 0)}"
                 )
 
         else:
-            st.warning("No active signals yet")
+            st.warning("No signals detected")
 
-    # lightweight refresh
     time.sleep(1)
     st.rerun()
