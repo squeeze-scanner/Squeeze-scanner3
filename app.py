@@ -6,7 +6,7 @@ from telegram import send_alert
 # -----------------------------
 # TITLE
 # -----------------------------
-st.title("🚀 V23 Squeeze Radar (Optimized Engine)")
+st.title("🚀 V24 Squeeze Radar (Optimized Engine)")
 
 # -----------------------------
 # USER INPUT
@@ -16,7 +16,11 @@ user_tickers = st.text_input(
     "GME,AMC,TSLA"
 )
 
-refresh_rate = st.slider("Refresh interval (seconds)", 5, 60, 15)
+refresh_rate = st.slider("Refresh interval (seconds)", 5, 60, 10)
+
+# 🔥 NEW: control scan size
+scan_size = st.slider("📊 Max tickers to scan", 10, 150, 50)
+
 start = st.toggle("🟢 Start Scanner")
 
 # -----------------------------
@@ -73,39 +77,30 @@ if start:
 
     now = time.time()
 
-    # -----------------------------
-    # THROTTLED SCAN
-    # -----------------------------
+    # throttle scans
     if now - st.session_state.last_run >= refresh_rate:
 
-        tickers = merge_universe(user_tickers)[:120]  # 🔥 HARD LIMIT
+        tickers = merge_universe(user_tickers)
 
-        fast_candidates = []
+        # 🔥 LIMIT SCAN SIZE (CRITICAL FIX)
+        tickers = tickers[:scan_size]
+
+        results = []
 
         for t in tickers:
             try:
                 res = check_signal(t)
 
-                if not res:
+                if res is None:
                     continue
 
-                # 🔥 EARLY FILTER (Fix #3)
-                score = res.get("score", 0)
+                results.append(res)
 
-                if score < 40:
-                    continue
+            except Exception as e:
+                st.write(f"❌ {t} failed")
 
-                fast_candidates.append(res)
-
-            except:
-                continue
-
-        # 🔥 KEEP ONLY BEST 50
-        results = sorted(
-            fast_candidates,
-            key=lambda x: x.get("score", 0),
-            reverse=True
-        )[:50]
+        # sort
+        results.sort(key=lambda x: x.get("score", 0), reverse=True)
 
         st.session_state.cache = results
         st.session_state.last_run = now
@@ -119,12 +114,11 @@ if start:
 
         st.subheader("📊 Market Radar")
 
-        st.write(f"Scanning {len(merge_universe(user_tickers))} tickers")
-        st.write(f"⚡ Active candidates: {len(results)}")
+        st.write(f"Scanning {len(results)} active tickers")
 
         if results:
 
-            # TABLE
+            # ✅ SAFE TABLE (no crashes)
             st.dataframe(results)
 
             st.subheader("🚨 Alerts")
@@ -136,13 +130,19 @@ if start:
                 score = r.get("score", 0)
                 price = r.get("price", "N/A")
 
+                short_pct = r.get("short_%", "N/A")
+                dtc = r.get("days_to_cover", "N/A")
+
                 msg = (
                     f"{ticker} | {signal} | Score {score} | ${price} | "
-                    f"Short {r.get('short_%')}% | DTC {r.get('days_to_cover')}"
+                    f"Short {short_pct}% | DTC {dtc}"
                 )
 
                 last_time = st.session_state.last_alert.get(ticker, 0)
 
+                # -----------------------------
+                # ALERT LOGIC (NO SPAM)
+                # -----------------------------
                 if signal == "HIGH":
 
                     if (
@@ -170,14 +170,13 @@ if start:
                 st.write(
                     f"{r.get('ticker')} → {r.get('signal')} | "
                     f"${r.get('price')} | Score {r.get('score')} | "
-                    f"Short {r.get('short_%')}% | "
-                    f"DTC {r.get('days_to_cover')}"
+                    f"Short {r.get('short_%', 'N/A')}% | "
+                    f"DTC {r.get('days_to_cover', 'N/A')}"
                 )
 
         else:
-            st.info("Scanning market...")
+            st.warning("No active signals yet")
 
-    # -----------------------------
-    # FAST REFRESH (NO SLEEP LAG)
-    # -----------------------------
+    # lightweight refresh
+    time.sleep(1)
     st.rerun()
