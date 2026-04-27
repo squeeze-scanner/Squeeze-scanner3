@@ -2,36 +2,53 @@ import random
 import time
 
 # -----------------------------
-# SECTOR UNIVERSE (EXPANDED + CLEANED)
+# EXPANDED SECTOR UNIVERSE (CLEAN + REALISTIC)
 # -----------------------------
 SECTORS = {
+    # ---------------- TECH (core + AI + growth)
     "TECH": [
         "AAPL","MSFT","NVDA","GOOGL","META","AMZN","AMD","INTC",
-        "ADBE","CRM","ORCL","NFLX","PLTR","SNOW","NOW","SHOP"
+        "ADBE","CRM","ORCL","NFLX","PLTR","SNOW","NOW","SHOP",
+        "MU","AVGO","QCOM","TXN","AMAT","LRCX"
     ],
 
+    # ---------------- FINANCE (liquidity engines)
     "FINANCE": [
-        "JPM","GS","BAC","C","MS","WFC","V","MA","PYPL"
+        "JPM","GS","BAC","C","MS","WFC","V","MA","PYPL","AXP","COIN"
     ],
 
+    # ---------------- MOMENTUM / RETAIL FLOW
     "MOMENTUM": [
-        "TSLA","UBER","LYFT","SQ","COIN","HOOD","RIVN","LCID","SOFI"
+        "TSLA","UBER","LYFT","SQ","HOOD","RIVN","LCID","SOFI",
+        "ABNB","DASH","AFRM","UPST","DKNG"
     ],
 
+    # ---------------- MEME / HIGH SHORT INTEREST ZONE
     "MEME": [
-        "GME","AMC","BB","KOSS","WISH","NOK","CLOV","MULN","FFIE","HKD","BBBY"
+        "GME","AMC","BB","KOSS","WISH","NOK","CLOV","MULN",
+        "FFIE","HKD","BBBY","ATER","SAVA","WKHS","SPCE","NKLA"
     ],
 
+    # ---------------- INDEX / ETF FLOW
     "INDEX": [
-        "SPY","QQQ","IWM","DIA","ARKK","VTI"
+        "SPY","QQQ","IWM","DIA","ARKK","VTI","XLF","XLK","SMH"
     ],
 
+    # ---------------- DEFENSIVE / HEDGE FLOW
     "DEFENSIVE": [
-        "XOM","CVX","KO","PEP","WMT","DIS","BA","CAT"
+        "XOM","CVX","KO","PEP","WMT","DIS","BA","CAT",
+        "MCD","NKE","PG","TGT","HD"
     ],
 
+    # ---------------- INTERNATIONAL / GLOBAL FLOW
     "INTERNATIONAL": [
-        "BABA","TSM","PDD","JD","TCEHY"
+        "BABA","TSM","PDD","JD","TCEHY","NIO","XPEV","LI"
+    ],
+
+    # ---------------- HIGH VOLATILITY SMALL CAPS (SQUEEZE FUEL)
+    "HIGH_VOL": [
+        "RKLB","ASTS","IONQ","QS","OPEN","RKT","CVNA","TLRY",
+        "SNDL","RIOT","MARA","HUT","BITF"
     ]
 }
 
@@ -43,56 +60,61 @@ _last_update = 0
 
 
 # -----------------------------
-# UPDATE SECTOR WEIGHTS (SMOOTH ROTATION)
+# ROTATION ENGINE (SMOOTH + NON-RANDOM CRASH PREVENTION)
 # -----------------------------
 def update_sector_weights():
     global _last_update
 
     now = time.time()
 
-    # rotate slowly (stability > chaos)
+    # update every 3 minutes
     if now - _last_update < 180:
         return
 
     for k in _sector_scores:
-        drift = random.uniform(0.97, 1.04)
+
+        drift = random.uniform(0.96, 1.05)
+
         _sector_scores[k] *= drift
 
-        # clamp stability
-        _sector_scores[k] = max(0.6, min(_sector_scores[k], 2.2))
+        # clamp (prevents explosion or decay)
+        _sector_scores[k] = max(0.7, min(_sector_scores[k], 2.3))
 
     _last_update = now
 
 
 # -----------------------------
-# MAIN UNIVERSE BUILDER
+# CORE UNIVERSE BUILDER (V27 FIXED)
 # -----------------------------
-def get_universe(user_input=None, max_size=150):
+def get_universe(user_input=None, max_size=200):
 
     update_sector_weights()
 
     universe = []
 
     # -----------------------------
-    # WEIGHTED SECTOR SELECTION
-    # (ENSURES ALL SECTORS ALWAYS ACTIVE)
+    # WEIGHTED SECTOR EXPANSION
+    # (ENSURES FULL MARKET COVERAGE)
     # -----------------------------
     for sector, tickers in SECTORS.items():
 
         weight = _sector_scores.get(sector, 1.0)
 
-        # FIX: stable deterministic selection (not too random)
-        base_count = 4
-        bonus = int(weight * 3)
+        # GUARANTEED MINIMUM PER SECTOR
+        base = 5
 
-        count = min(len(tickers), base_count + bonus)
+        # dynamic boost
+        bonus = int(weight * 4)
 
-        selected = random.sample(tickers, count)
+        count = min(len(tickers), base + bonus)
+
+        # safe sampling (no crashes if small list)
+        selected = random.sample(tickers, k=max(1, count))
 
         universe.extend(selected)
 
     # -----------------------------
-    # USER INPUT BOOST (HIGH PRIORITY)
+    # USER INPUT BOOST (HIGHEST PRIORITY)
     # -----------------------------
     if user_input:
         manual = [
@@ -101,9 +123,10 @@ def get_universe(user_input=None, max_size=150):
             if t.strip()
         ]
 
-        # boost importance by duplication (signal weighting)
+        # strong weighting (important for scanner focus)
         universe.extend(manual)
-        universe.extend(manual[:10])  # extra weight for user picks
+        universe.extend(manual)
+        universe.extend(manual[:10])
 
     # -----------------------------
     # CLEANUP
@@ -111,22 +134,25 @@ def get_universe(user_input=None, max_size=150):
     universe = list(set(universe))
 
     # -----------------------------
-    # GUARANTEED MIN COVERAGE (FIXES "ONLY 18 TICKERS" BUG)
+    # GUARANTEE MINIMUM COVERAGE
+    # (FIXES "18 TICKERS BUG")
     # -----------------------------
-    MIN_REQUIRED = 80
+    MIN_REQUIRED = 120
 
     if len(universe) < MIN_REQUIRED:
-        fallback = []
 
-        for sector in SECTORS:
-            fallback.extend(SECTORS[sector])
+        flat = []
+        for sector in SECTORS.values():
+            flat.extend(sector)
 
-        universe.extend(fallback)
+        # fill aggressively
+        universe.extend(flat)
+        universe.extend(flat[:50])
 
     universe = list(set(universe))
 
     # -----------------------------
-    # FINAL SORTING (STABILITY BOOST)
+    # FINAL ORDERING (SLIGHT STRUCTURE, NOT PURE RANDOM)
     # -----------------------------
     random.shuffle(universe)
 
