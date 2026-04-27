@@ -23,7 +23,6 @@ def send_alert(message, retry=2):
         return False
 
     try:
-        # RATE LIMIT (1 msg/sec safety)
         now = time.time()
         elapsed = now - _last_send_time
 
@@ -32,26 +31,31 @@ def send_alert(message, retry=2):
 
         _last_send_time = time.time()
 
-        # SAFE ESCAPE
-        safe_msg = html.escape(str(message))[:3500]
-
         payload = {
             "chat_id": CHAT_ID,
-            "text": safe_msg
+            "text": str(message)[:3500]
         }
 
-        # RETRY SYSTEM
         for attempt in range(retry + 1):
+
             try:
-                res = requests.post(BASE_URL, data=payload, timeout=8)
+                res = requests.post(BASE_URL, data=payload, timeout=6)
 
-                print("[TELEGRAM]", res.status_code)
+                print("[TELEGRAM STATUS]", res.status_code)
+                print("[TELEGRAM RESPONSE]", res.text)
 
-                if res.status_code == 200:
-                    try:
-                        return res.json().get("ok", False)
-                    except:
-                        return True
+                data = None
+                try:
+                    data = res.json()
+                except:
+                    pass
+
+                if res.status_code == 200 and data and data.get("ok"):
+                    return True
+
+                # 🔥 IMPORTANT: show real failure reason
+                if data:
+                    print("[TELEGRAM ERROR]", data.get("description"))
 
             except requests.exceptions.Timeout:
                 print(f"[TELEGRAM TIMEOUT] attempt {attempt + 1}")
