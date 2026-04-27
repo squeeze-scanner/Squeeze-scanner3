@@ -1,20 +1,58 @@
-from concurrent.futures import ThreadPoolExecutor
+import time
+import threading
 from scanner import check_signal
-from universe import UNIVERSE
 
 
-def scan_all():
-    results = []
+class RadarEngine:
+    def __init__(self, tickers):
+        self.tickers = tickers
+        self.cache = []
+        self.last_scan = 0
+        self.refresh_rate = 10
+        self.lock = threading.Lock()
+        self.running = False
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        futures = [executor.submit(check_signal, t) for t in UNIVERSE]
+    # -----------------------------
+    # SINGLE SCAN CYCLE
+    # -----------------------------
+    def scan(self):
+        results = []
 
-        for f in futures:
+        for t in self.tickers:
             try:
-                res = f.result()
+                res = check_signal(t)
                 if res:
                     results.append(res)
             except:
                 pass
 
-    return sorted(results, key=lambda x: x["score"], reverse=True)
+        results.sort(key=lambda x: x["score"], reverse=True)
+
+        with self.lock:
+            self.cache = results
+            self.last_scan = time.time()
+
+    # -----------------------------
+    # BACKGROUND LOOP (INSTITUTIONAL STYLE)
+    # -----------------------------
+    def start(self, refresh_rate):
+        self.refresh_rate = refresh_rate
+        self.running = True
+
+        def loop():
+            while self.running:
+                self.scan()
+                time.sleep(self.refresh_rate)
+
+        thread = threading.Thread(target=loop, daemon=True)
+        thread.start()
+
+    # -----------------------------
+    # SAFE READ ACCESS
+    # -----------------------------
+    def get_data(self):
+        with self.lock:
+            return self.cache
+
+    def stop(self):
+        self.running = False
