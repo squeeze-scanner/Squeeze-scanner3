@@ -1,9 +1,8 @@
 import requests
 import time
-import html
 
 # -----------------------------
-# TELEGRAM CONFIG
+# TELEGRAM CONFIG (FAKE TEST ID)
 # -----------------------------
 BOT_TOKEN = "8152536097:AAHyJsblgvVa5r2B12U-YeKt3-Z8O2dG_Kw"
 CHAT_ID = "7376511550"
@@ -14,15 +13,26 @@ _last_send_time = 0
 
 
 # -----------------------------
-# SAFE SENDER (V2 STABLE ENGINE)
+# SAFE TELEGRAM SENDER (V2 STABLE)
 # -----------------------------
 def send_alert(message, retry=2):
+    """
+    Reliable Telegram sender with:
+    - rate limiting
+    - retries
+    - full debug output
+    """
+
     global _last_send_time
 
     if not message:
+        print("[TELEGRAM] Empty message blocked")
         return False
 
     try:
+        # -----------------------------
+        # RATE LIMIT (1 msg/sec safe)
+        # -----------------------------
         now = time.time()
         elapsed = now - _last_send_time
 
@@ -36,24 +46,34 @@ def send_alert(message, retry=2):
             "text": str(message)[:3500]
         }
 
+        # -----------------------------
+        # RETRY LOOP
+        # -----------------------------
         for attempt in range(retry + 1):
 
             try:
-                res = requests.post(BASE_URL, data=payload, timeout=6)
+                res = requests.post(BASE_URL, data=payload, timeout=8)
 
-                print("[TELEGRAM STATUS]", res.status_code)
-                print("[TELEGRAM RESPONSE]", res.text)
+                print("\n[TELEGRAM DEBUG]")
+                print("STATUS:", res.status_code)
+                print("RESPONSE:", res.text)
 
-                data = None
                 try:
                     data = res.json()
-                except:
-                    pass
+                except Exception:
+                    data = None
 
-                if res.status_code == 200 and data and data.get("ok"):
+                # -----------------------------
+                # HARD FAILURE CHECK
+                # -----------------------------
+                if res.status_code != 200:
+                    print("[TELEGRAM FAIL] HTTP ERROR")
+                    continue
+
+                if data and data.get("ok") is True:
+                    print("[TELEGRAM] SENT SUCCESSFULLY")
                     return True
 
-                # 🔥 IMPORTANT: show real failure reason
                 if data:
                     print("[TELEGRAM ERROR]", data.get("description"))
 
@@ -65,6 +85,7 @@ def send_alert(message, retry=2):
 
             time.sleep(1.5 * (attempt + 1))
 
+        print("[TELEGRAM] FAILED AFTER RETRIES")
         return False
 
     except Exception as e:
@@ -73,7 +94,7 @@ def send_alert(message, retry=2):
 
 
 # -----------------------------
-# V2 MESSAGE BUILDER (OPTIONAL BUT USED BY APP.PY)
+# OPTIONAL MESSAGE BUILDER (USED BY APP)
 # -----------------------------
 def build_message(ticker, data, trade, alert_type="ENTRY"):
     price = data.get("price", 0)
@@ -84,38 +105,4 @@ def build_message(ticker, data, trade, alert_type="ENTRY"):
     bear = data.get("bear_prob", 0)
 
     entry = trade.get("entry", (0, 0))
-    stop = trade.get("stop", 0)
-    t1 = trade.get("target1", 0)
-    t2 = trade.get("target2", 0)
-    rr = trade.get("rr", 0)
-    state = trade.get("state", "WAITING")
-    setup_type = trade.get("type", "UNKNOWN")
-
-    header = "🚀 V2 EXECUTION ALERT"
-
-    if alert_type == "EXTREME":
-        header = "🔥 EXTREME TRADE SETUP"
-    elif alert_type == "BREAKOUT":
-        header = "🚀 BREAKOUT CONFIRMED"
-    elif alert_type == "ENTRY":
-        header = "⚡ ENTRY ZONE ALERT"
-
-    msg = f"""
-{header}
-
-{ticker} | {signal} | ${price}
-STATE: {state}
-TYPE: {setup_type}
-
-ENTRY: {entry}
-STOP: {stop}
-TARGET 1: {t1}
-TARGET 2: {t2}
-RR: {rr}
-
-SETUP: {setup}%
-SQUEEZE: {squeeze}%
-BULL: {bull}% | BEAR: {bear}%
-"""
-
-    return msg.strip()
+    stop
